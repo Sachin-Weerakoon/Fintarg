@@ -1,0 +1,430 @@
+// Fintarg data model.
+//
+// Money is stored as an Int in LKR *cents* (1 rupee = 100 cents) so that every
+// financial calculation in src/lib/finance is exact integer arithmetic. Never
+// introduce Float for money.
+//
+// SQLite is used for local development; the schema is portable to PostgreSQL
+// (Supabase / Neon / Railway) by changing the datasource and the String-typed
+// enumerations below into native enums.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  edition      String    @default("basic") // "basic" | "business" (see src/lib/plans.ts)
+  plan         String    @default("free") // internal plan key, feature flags derive from this
+  emailVerifiedAt DateTime?
+  suspendedAt  DateTime?
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  profile        Profile?
+  sessions       Session[]
+  contacts       Contact[]
+  documents      Document[]
+  incomes        Income[]
+  expenses       Expense[]
+  categories     ExpenseCategory[]
+  financePayments FinancePayment[]
+  loans          Loan[]
+  pawnedItems    PawnedItem[]
+  savingsGoals   SavingsGoal[]
+  contributions  Contribution[]
+  spendPlans     PersonalSpendingPlan[]
+  companies      Company[]
+  letters        Letter[]
+  agreements     Agreement[]
+  medicalRecords MedicalRecord[]
+  reminders      Reminder[]
+  deletionRequests DeletionRequest[]
+  auditLogs      AuditLog[]
+
+  @@index([email])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  tokenHash    String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  lastSeenAt   DateTime @default(now())
+  userAgent    String?
+  ip           String?
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Profile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  fullName    String?
+  mobile      String?
+  address     String?
+  dateOfBirth DateTime?
+  nicNumber   String?
+  portfolioUrl String?
+  // Appearance (FR-8) - stored per account, synced across devices.
+  themeAccent String   @default("#0f766e")
+  themeMode   String   @default("system") // "light" | "dark" | "system"
+  fontScale   String   @default("medium") // "small" | "medium" | "large"
+  density     String   @default("comfortable") // "comfortable" | "compact"
+  /// Reminders are email by default; the user can turn them off or change how
+  /// far ahead they are notified.
+  remindersEnabled Boolean @default(true)
+  reminderLeadDays  Int     @default(3)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Contact {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  relationship String?
+  phone        String
+  kind         String   @default("personal") // "personal" | "family"
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Document {
+  id           String   @id @default(cuid())
+  userId       String
+  category     String // "profile" | "cv" | "nic" | "bank" | "medical" | "other" | "letter" | "agreement"
+  label        String
+  originalName String
+  storedName   String
+  mimeType     String
+  sizeBytes    Int
+  note         String?
+  sensitivity  String   @default("standard") // "standard" | "sensitive" | "restricted"
+  deletedAt    DateTime?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, category])
+}
+
+model ExpenseCategory {
+  id         String   @id @default(cuid())
+  userId     String? // null = built-in category shared by every account
+  name       String
+  sortOrder  Int      @default(0)
+  isDefault  Boolean  @default(false)
+  deletedAt  DateTime?
+  createdAt  DateTime @default(now())
+
+  user     User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@index([userId])
+}
+
+model Income {
+  id         String    @id @default(cuid())
+  userId     String
+  sourceName String
+  kind       String // "salary" | "business" | "other"
+  amountCents Int
+  frequency  String    @default("monthly") // "monthly" | "one_time" | "custom"
+  date       DateTime
+  recurring  Boolean   @default(false)
+  customIntervalDays Int?
+  notes      String?
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+model Expense {
+  id          String    @id @default(cuid())
+  userId      String
+  date        DateTime
+  amountCents Int
+  categoryId  String?
+  categoryName String
+  note        String?
+  recurring   Boolean   @default(false)
+  isMedical   Boolean   @default(false)
+  isPersonal  Boolean   @default(false) // counts against the planned personal allowance
+  /// Set when this expense was booked from a Medical record, so deleting the
+  /// record also removes its money from the monthly analysis.
+  medicalRecordId String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category ExpenseCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([userId, date])
+  @@index([userId, categoryName])
+}
+
+model FinancePayment {
+  id              String    @id @default(cuid())
+  userId          String
+  lender          String
+  description     String
+  amountCents     Int
+  dueDayOfMonth   Int
+  monthsRemaining Int?
+  startDate       DateTime  @default(now())
+  active          Boolean   @default(true)
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, active])
+}
+
+model Loan {
+  id                   String    @id @default(cuid())
+  userId               String
+  lender               String
+  purpose              String?
+  principalCents       Int
+  interestRatePct      Float     @default(0)
+  method               String    @default("reducing") // "flat" | "reducing" | "simple"
+  startDate            DateTime
+  dueDate              DateTime?
+  remainingBalanceCents Int
+  // Manual interest is used when the user records a fixed monthly interest amount.
+  manualMonthlyInterestCents Int?
+  notes                String?
+  sourceRef            String? // e.g. "shortfall" when created from a monthly shortfall
+  deletedAt            DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, deletedAt])
+}
+
+model PawnedItem {
+  id                    String    @id @default(cuid())
+  userId                String
+  description           String
+  amountReceivedCents   Int
+  interestRatePct       Float     @default(0)
+  monthlyInterestCents  Int       @default(0)
+  nextInterestDueDate   DateTime?
+  redemptionDate        DateTime?
+  notes                 String?
+  deletedAt             DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, nextInterestDueDate])
+}
+
+model SavingsGoal {
+  id                String    @id @default(cuid())
+  userId            String
+  name              String
+  targetAmountCents Int
+  endDate           DateTime?
+  mode              String    @default("daily") // "daily" | "monthly"
+  dailyAmountCents  Int       @default(0)
+  monthlyTargetCents Int      @default(0)
+  note              String?
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contributions Contribution[]
+
+  @@index([userId, deletedAt])
+}
+
+model Contribution {
+  id          String   @id @default(cuid())
+  userId      String
+  goalId      String
+  date        DateTime @default(now())
+  amountCents Int
+  note        String?
+  createdAt   DateTime @default(now())
+
+  user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goal SavingsGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+  @@index([goalId])
+}
+
+model PersonalSpendingPlan {
+  id              String   @id @default(cuid())
+  userId          String
+  month           String // "YYYY-MM"
+  plannedAmountCents Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, month])
+}
+
+model Company {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  regNumber    String?
+  address      String?
+  phone        String?
+  email        String?
+  accentColor  String?
+  logoStoredName String?
+  deletedAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  letters   Letter[]
+  agreements Agreement[]
+
+  @@index([userId])
+}
+
+model Letter {
+  id           String   @id @default(cuid())
+  userId       String
+  companyId    String?
+  templateKey  String // "bank" | "offer" | "personal" | "company"
+  title        String
+  variablesJson String
+  storedName   String?
+  bodyText     String?
+  deletedAt    DateTime?
+  createdAt    DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+}
+
+model Agreement {
+  id          String    @id @default(cuid())
+  userId      String
+  companyId   String?
+  title       String
+  otherParty  String
+  startDate   DateTime
+  endDate     DateTime?
+  valueCents  Int?
+  summary     String?
+  documentId  String?
+  status      String    @default("draft") // "draft" | "active" | "expired"
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([endDate])
+}
+
+model MedicalRecord {
+  id          String    @id @default(cuid())
+  userId      String
+  kind        String // "expense" | "appointment" | "medication"
+  date        DateTime  @default(now())
+  title       String
+  provider    String?
+  amountCents Int?
+  notes       String?
+  nextDoseAt  DateTime?
+  completed   Boolean   @default(false)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+model Reminder {
+  id         String    @id @default(cuid())
+  userId     String
+  kind       String // "finance_payment" | "loan" | "pawn_interest" | "goal" | "agreement" | "medical"
+  title      String
+  dueDate    DateTime
+  entityType String?
+  entityId   String?
+  /// Stable key so re-running the sync never produces a duplicate reminder.
+  dedupeKey  String?   @unique
+  channel    String    @default("email") // "email" | "sms"
+  status     String    @default("pending") // "pending" | "done" | "dismissed"
+  sentAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, dueDate])
+  @@index([status, dueDate])
+}
+
+/// A verified request to close an account. Every record is hard-deleted once
+/// the 30-day window in the Personal Data Protection Act has passed.
+model DeletionRequest {
+  id           String    @id @default(cuid())
+  userId       String
+  requestedAt  DateTime  @default(now())
+  purgeAfter   DateTime
+  completedAt  DateTime?
+  fileNames    String    @default("[]") // JSON array of vault files to unlink
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([purgeAfter, completedAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String?
+  entityId   String?
+  meta       String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+}

@@ -1,0 +1,9 @@
+{
+  "extends": ["next/core-web-vitals"],
+  "rules": {
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "eqeqeq": ["error", "smart"],
+    "prefer-const": "error"
+  },
+  "ignorePatterns": ["node_modules", ".next", "src/generated"]
+}
