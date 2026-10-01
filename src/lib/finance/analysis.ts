@@ -13,7 +13,7 @@
  */
 
 import { addDays, addMonths, endOfMonth, startOfMonth } from "date-fns";
-import { daysInMonth, monthRange, type MonthKey } from "@/lib/dates";
+import { daysInMonth, monthRange, toMonthKey, type MonthKey } from "@/lib/dates";
 import type { Cents } from "@/lib/money";
 
 export interface IncomeInput {
@@ -44,17 +44,23 @@ export interface FinancePaymentInput {
   amountCents: Cents;
   dueDayOfMonth: number;
   monthsRemaining?: number | null;
+  /** First instalment. A payment does not count in any month before this. */
+  startDate: Date;
   active: boolean;
 }
+
+export type LoanMethod = "flat" | "reducing" | "simple" | "compound";
 
 export interface LoanInput {
   id: string;
   lender: string;
   principalCents: Cents;
   interestRatePct: number;
-  method: "flat" | "reducing" | "simple";
+  method: LoanMethod;
   remainingBalanceCents: Cents;
   manualMonthlyInterestCents?: number | null;
+  /** Interest only accrues from this month onwards. */
+  startDate: Date;
   dueDate?: Date | null;
 }
 
@@ -156,12 +162,16 @@ export interface MonthlyAnalysis {
     breakdown: LineItem[];
   };
   actualPersonalSpendingCents: Cents;
+  /** Every expense this month, personal included. A total, not an outflow term. */
+  totalSpentCents: Cents;
   personalPlanUsagePct: number;
   personalPlanRemainingCents: Cents;
   personalPlanStatus: "ok" | "near_limit" | "over";
 
   freeCashCents: Cents;
   cashBeforeSavingsCents: Cents;
+  /** D6: income minus what every goal asks for this month. Display only. */
+  leftAfterGoalsCents: Cents;
 
   daily: { date: Date; spentCents: Cents }[];
   monthToDateSpentCents: Cents;
@@ -195,29 +205,94 @@ export interface AnalysisWarning {
 
 const MS_DAY = 86_400_000;
 
-/** Months a payment has left, or null when it runs indefinitely. */
-function monthsLeft(payment: FinancePaymentInput, month: MonthKey): number | null {
-  return payment.monthsRemaining == null ? null : Math.max(0, payment.monthsRemaining);
+/** Difference between two month keys, counting the start month as 0. */
+export function monthDistance(from: MonthKey, to: MonthKey): number {
+  const a = monthKeyToDate(from);
+  const b = monthKeyToDate(to);
+  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
 }
 
 /**
- * Loan interest due in the month (BR-3: interest reduces future remaining money).
- * - manual amount always wins when the user recorded one
- * - flat  : (principal - repaid) * annualRate / 12
- * - simple: principal * annualRate / 12
- * - reducing: remaining balance * annualRate / 12
+ * Does a finance payment land in this month?
+ *
+ * A payment counts from its start month until `monthsRemaining` instalments have
+ * been paid. `monthsRemaining` is the *total* number of instalments, so the
+ * last one falls in `startMonth + monthsRemaining - 1` - the exclusive upper
+ * bound below. An indefinite payment (null) never ends.
  */
-export function loanMonthlyInterestCents(loan: LoanInput): Cents {
+export function paymentCountsInMonth(payment: FinancePaymentInput, month: MonthKey): boolean {
+  if (!payment.active) return false;
+  const startMonth = toMonthKey(payment.startDate);
+  const offset = monthDistance(startMonth, month);
+  if (offset < 0) return false;
+  if (payment.monthsRemaining == null) return true;
+  return offset < payment.monthsRemaining;
+}
+
+/** Instalments still to pay from today, for "N payments left" (FR-2.3). */
+export function paymentsRemainingFrom(
+  payment: FinancePaymentInput,
+  today = new Date(),
+): number | null {
+  if (payment.monthsRemaining == null) return null;
+  const startMonth = toMonthKey(payment.startDate);
+  const paidThrough = monthDistance(startMonth, toMonthKey(today));
+  return Math.max(0, payment.monthsRemaining - Math.max(0, paidThrough));
+}
+
+/**
+ * Loan interest due in a given month (BR-3: interest reduces future remaining money).
+ *
+ * Order matters and follows the specification:
+ *  1. a manually recorded monthly amount always wins;
+ *  2. nothing accrues before the start month or after the due month;
+ *  3. `reducing`  - remaining balance x rate / 12
+ *  4. `simple`/`flat` - original principal x rate / 12
+ *  5. `compound`  - one month of monthly compounding from the start month:
+ *     `P x ((1+r/12)^n - (1+r/12)^(n-1))`, with `n` whole months since the
+ *     start month (the start month itself is n = 1). Rounded once, at the end,
+ *     so the working never accumulates float drift into stored cents.
+ */
+export function loanMonthlyInterestCents(loan: LoanInput, month: MonthKey): Cents {
   if (loan.manualMonthlyInterestCents != null && loan.manualMonthlyInterestCents > 0) {
     return loan.manualMonthlyInterestCents;
   }
+
+  const startMonth = toMonthKey(loan.startDate);
+  const offset = monthDistance(startMonth, month);
+  if (offset < 0) return 0;
+  // A positive distance means `month` is *after* the loan finished.
+  if (loan.dueDate && monthDistance(toMonthKey(loan.dueDate), month) > 0) return 0;
+
   const rate = (loan.interestRatePct || 0) / 100;
   if (rate <= 0) return 0;
-  const annual = loan.interestRatePct;
-  if (loan.method === "simple") {
-    return Math.round(loan.remainingBalanceCents * (rate / 12));
+  const monthlyRate = rate / 12;
+
+  if (loan.method === "compound") {
+    const n = offset + 1; // the start month is the first compounding period
+    const principal = loan.remainingBalanceCents;
+    const growth = Math.pow(1 + monthlyRate, n) - Math.pow(1 + monthlyRate, n - 1);
+    return Math.round(principal * growth);
   }
-  return Math.round(loan.remainingBalanceCents * (annual / 100 / 12));
+
+  if (loan.method === "simple" || loan.method === "flat") {
+    return Math.round(loan.principalCents * monthlyRate);
+  }
+
+  return Math.round(loan.remainingBalanceCents * monthlyRate);
+}
+
+/**
+ * Does pawn interest fall due in this month? (D1)
+ *
+ * With a recorded due date it only lands in that month; without one it is
+ * assumed to be payable every month until the item is redeemed.
+ */
+export function pawnInterestDueInMonth(item: PawnedItemInput, month: MonthKey): boolean {
+  // Once the item has been redeemed in an earlier month, nothing is due.
+  if (item.redemptionDate && monthDistance(toMonthKey(item.redemptionDate), month) > 0) return false;
+  if (!item.nextInterestDueDate) return true;
+  return toMonthKey(item.nextInterestDueDate) === month;
 }
 
 /** Pawn interest due in the month: recorded amount, else amount x annual rate / 12. */
@@ -238,8 +313,9 @@ export function incomeForMonth(incomes: IncomeInput[], month: MonthKey): IncomeI
   const { start } = monthRange(month);
   return incomes.filter((income) => {
     if (inRange(income.date, month)) return true;
-    // A monthly recurring source with no date in this month is still expected.
-    if (income.frequency === "monthly" && income.recurring) {
+    // B6: a `monthly` source is recurring even when the "repeat every month"
+    // box was never ticked, so a salary entered 8 months ago still counts.
+    if (isRecurringIncome(income)) {
       const prior = addMonths(start, -1);
       return income.date <= endOfMonth(prior);
     }
@@ -249,6 +325,11 @@ export function incomeForMonth(incomes: IncomeInput[], month: MonthKey): IncomeI
     }
     return false;
   });
+}
+
+/** A monthly source counts as recurring whether or not the flag was ticked. */
+export function isRecurringIncome(income: IncomeInput): boolean {
+  return income.recurring || income.frequency === "monthly";
 }
 
 export function buildMonthlyAnalysis(input: AnalysisInput): MonthlyAnalysis {
@@ -273,42 +354,55 @@ export function buildMonthlyAnalysis(input: AnalysisInput): MonthlyAnalysis {
 
   /* -------------------------------------------------------------- expenses */
   const monthExpenses = input.expenses.filter((expense) => inRange(expense.date, month));
-  const livingExpensesTotal = monthExpenses.reduce((total, e) => total + e.amountCents, 0);
+  // D2: "living expenses" is every expense that is *not* personal spending, so
+  // medical is included. Personal spending is reported on its own line below
+  // and must never be counted a second time inside this figure (B1).
+  const nonPersonalExpenses = monthExpenses.filter((expense) => !expense.isPersonal);
+  const livingExpensesTotal = nonPersonalExpenses.reduce((total, e) => total + e.amountCents, 0);
   const actualPersonal = monthExpenses
     .filter((expense) => expense.isPersonal)
     .reduce((total, expense) => total + expense.amountCents, 0);
+  // Everything actually spent this month, for the daily strip and the
+  // month-to-date figure. This is a total, not an outflow component.
+  const totalSpent = monthExpenses.reduce((total, expense) => total + expense.amountCents, 0);
   const medicalTotal = monthExpenses
     .filter((expense) => expense.isMedical)
     .reduce((total, expense) => total + expense.amountCents, 0);
 
   /* ------------------------------------------------- finance payments (BR-1) */
+  const duePayments = input.financePayments.filter((payment) => paymentCountsInMonth(payment, month));
   const activePayments = input.financePayments.filter((payment) => payment.active);
-  const financeTotal = activePayments.reduce((total, payment) => total + payment.amountCents, 0);
+  const financeTotal = duePayments.reduce((total, payment) => total + payment.amountCents, 0);
 
   /* -------------------------------------------------------- loan + pawn interest */
   const loanInterestTotal = input.loans.reduce(
-    (total, loan) => total + loanMonthlyInterestCents(loan),
+    (total, loan) => total + loanMonthlyInterestCents(loan, month),
     0,
   );
-  const pawnInterestTotal = input.pawnedItems.reduce(
-    (total, item) => total + pawnMonthlyInterestCents(item),
-    0,
-  );
+  // D1: pawn interest is a real cash outflow, but only in the month it falls due.
+  const pawnInterestTotal = input.pawnedItems
+    .filter((item) => pawnInterestDueInMonth(item, month))
+    .reduce((total, item) => total + pawnMonthlyInterestCents(item), 0);
 
   /* ------------------------------------------------------- planned personal */
   const plannedPersonal = Math.max(0, input.plannedPersonalCents ?? 0);
+  // D2: the personal line is the larger of what was planned and what was spent.
+  const personalOutflow = Math.max(plannedPersonal, actualPersonal);
   const personalUsagePct = plannedPersonal > 0 ? Math.round((actualPersonal / plannedPersonal) * 100) : 0;
   const personalPlanStatus: "ok" | "near_limit" | "over" =
-    plannedPersonal <= 0 ? "ok" : actualPersonal > plannedPersonal ? "over" : personalUsagePct >= 80 ? "near_limit" : "ok";
-  // Only the *unspent* part of the plan is a real outflow this month.
-  const plannedPersonalUnspent = Math.max(0, Math.min(actualPersonal, plannedPersonal));
-  const personalOverflow = Math.max(0, actualPersonal - plannedPersonal);
-  const plannedPersonalOutflow = plannedPersonalUnspent + personalOverflow;
+    plannedPersonal <= 0
+      ? "ok"
+      : actualPersonal >= plannedPersonal
+        ? "over"
+        : personalUsagePct >= 80
+          ? "near_limit"
+          : "ok";
 
   /* ------------------------------------------------------------------ goals */
   // Free cash is measured *before* savings, so goal feasibility never feeds
   // back into itself.
-  const freeCash = incomeTotal - (livingExpensesTotal + financeTotal + loanInterestTotal + plannedPersonalOutflow);
+  const freeCash =
+    incomeTotal - (livingExpensesTotal + financeTotal + loanInterestTotal + pawnInterestTotal + personalOutflow);
 
   const goals: GoalFeasibility[] = input.goals.map((goal) =>
     evaluateGoal(goal, freeCash, daysLeftInMonth, month, totalDays),
@@ -320,39 +414,44 @@ export function buildMonthlyAnalysis(input: AnalysisInput): MonthlyAnalysis {
   const savingsRequired = goals.reduce((total, goal) => total + goal.plannedCents, 0);
 
   /* ------------------------------------------------------------- BR-1/BR-2 */
+  // BR-1 now also includes pawn interest. Every term below appears exactly once
+  // in `breakdown`, so the lines always reconcile to the total.
   const outflowTotal =
     livingExpensesTotal +
     financeTotal +
     loanInterestTotal +
-    plannedPersonalOutflow +
+    pawnInterestTotal +
+    personalOutflow +
     savingsRequired;
 
   const netPosition = incomeTotal - outflowTotal;
   const cashBeforeSavings = netPosition + savingsRequired;
+
+  /* ------------------------------------------- D6: what is left after goals */
+  const goalsRequiredThisMonth = goals.reduce((total, goal) => total + goal.requiredThisMonthCents, 0);
+  const leftAfterGoals = incomeTotal - goalsRequiredThisMonth;
 
   /* ------------------------------------------------------------- projection */
   const nextMonth = monthKeyFromOffset(month, 1);
   const projectionIncome = monthIncomes
     .filter((income) => income.recurring || income.frequency === "monthly" || income.frequency === "custom")
     .reduce((total, income) => total + income.amountCents, 0);
-  const projectionObligations: ObligationItem[] = activePayments
-    .filter((payment) => {
-      const left = monthsLeft(payment, nextMonth);
-      return left === null || left > 0;
-    })
-    .map((payment) => ({
-      key: `finance:${payment.id}`,
-      label: `${payment.lender} - ${payment.description}`,
-      amountCents: payment.amountCents,
-      dueDay: payment.dueDayOfMonth,
-      dueDate: dueDateInMonth(payment.dueDayOfMonth, nextMonth),
-      detail: payment.monthsRemaining
-        ? `${payment.monthsRemaining} payment(s) left`
-        : "Ongoing",
-    }));
+  const projectionObligations: ObligationItem[] = duePayments
+    .filter((payment) => paymentCountsInMonth(payment, nextMonth))
+    .map((payment) => {
+      const left = paymentsRemainingFrom(payment, endOfMonth(monthKeyToDate(month)));
+      return {
+        key: `finance:${payment.id}`,
+        label: `${payment.lender} - ${payment.description}`,
+        amountCents: payment.amountCents,
+        dueDay: payment.dueDayOfMonth,
+        dueDate: dueDateInMonth(payment.dueDayOfMonth, nextMonth),
+        detail: left == null ? "Ongoing" : `${left} payment(s) left`,
+      };
+    });
   const projectionPawn: ObligationItem[] = input.pawnedItems
     .map((item) => ({ item, interest: pawnMonthlyInterestCents(item) }))
-    .filter((entry) => entry.interest > 0 && itemStillActive(entry.item, nextMonth))
+    .filter((entry) => entry.interest > 0 && pawnInterestDueInMonth(entry.item, nextMonth))
     .map(({ item, interest }) => ({
       key: `pawn:${item.id}`,
       label: `Pawn interest - ${item.description}`,
@@ -363,8 +462,9 @@ export function buildMonthlyAnalysis(input: AnalysisInput): MonthlyAnalysis {
         : undefined,
     }));
   projectionObligations.push(...projectionPawn);
+  // Same function, next month: a loan that has not started yet accrues nothing.
   const projectionLoanInterest = input.loans.reduce(
-    (total, loan) => total + loanMonthlyInterestCents(loan),
+    (total, loan) => total + loanMonthlyInterestCents(loan, nextMonth),
     0,
   );
   if (projectionLoanInterest > 0) {
@@ -377,20 +477,24 @@ export function buildMonthlyAnalysis(input: AnalysisInput): MonthlyAnalysis {
   }
   const obligationsTotal = projectionObligations.reduce((total, item) => total + item.amountCents, 0);
 
-  // Baseline living cost for next month: this month's actual, or the daily
-  // average when this month is still young.
-  const dailySeries = buildDailySeries(monthExpenses, month);
-  const averageDaily = dailySeries.length
-    ? Math.round(dailySeries.reduce((total, day) => total + day.spentCents, 0) / Math.max(1, elapsedDays))
+  // Baseline living cost for next month: this month's actual non-personal
+  // spending, or the daily average when this month is still young. Personal
+  // spending is excluded here because it is added once below as `personalOutflow`.
+  const nonPersonalDaily = buildDailySeries(nonPersonalExpenses, month);
+  const averageDaily = nonPersonalDaily.length
+    ? Math.round(
+        nonPersonalDaily.reduce((total, day) => total + day.spentCents, 0) / Math.max(1, elapsedDays),
+      )
     : 0;
   const projectedExpenses = averageDaily > 0 ? averageDaily * totalDays : livingExpensesTotal;
   const projectedSavings = savingsRequired;
-  const projectedOutflow = projectedExpenses + obligationsTotal + plannedPersonal + projectedSavings;
+  const projectedOutflow = projectedExpenses + obligationsTotal + personalOutflow + projectedSavings;
   const projectedNet = projectionIncome - projectedOutflow;
 
   /* ---------------------------------------------------------------- charts */
   const categoryTotals = buildCategoryTotals(monthExpenses);
-  const monthToDateSpent = livingExpensesTotal;
+  const monthToDateSpent = totalSpent;
+  const dailySeries = buildDailySeries(monthExpenses, month);
 
   const projection = {
     month: nextMonth,
@@ -440,22 +544,23 @@ export function buildMonthlyAnalysis(input: AnalysisInput): MonthlyAnalysis {
       financePaymentsCents: financeTotal,
       loanInterestCents: loanInterestTotal,
       pawnInterestCents: pawnInterestTotal,
-      plannedPersonalCents: plannedPersonal,
+      plannedPersonalCents: personalOutflow,
       savingsCents: savingsRequired,
+      /** BR-1: living + finance payments + loan interest + pawn interest + personal + savings */
       totalCents: outflowTotal,
       breakdown: [
         {
           key: "living",
           label: "Living expenses",
           amountCents: livingExpensesTotal,
-          detail: monthExpenses.length ? `${monthExpenses.length} entries` : "Nothing recorded yet",
+          detail: nonPersonalExpenses.length ? `${nonPersonalExpenses.length} entries` : "Nothing recorded yet",
           href: "/financial/expenses",
         },
         {
           key: "finance",
           label: "Finance payments",
           amountCents: financeTotal,
-          detail: `${activePayments.length} active payment(s)`,
+          detail: `${duePayments.length} due this month`,
           href: "/financial/finance-payments",
         },
         {
@@ -475,8 +580,13 @@ export function buildMonthlyAnalysis(input: AnalysisInput): MonthlyAnalysis {
         {
           key: "personal-plan",
           label: "Planned personal spending",
-          amountCents: plannedPersonalOutflow,
-          detail: plannedPersonal > 0 ? `${personalUsagePct}% of your Rs. plan used` : "No monthly plan set",
+          amountCents: personalOutflow,
+          detail:
+            plannedPersonal > 0
+              ? `Rs. ${Math.round(actualPersonal / 100).toLocaleString("en-LK")} spent of Rs. ${Math.round(plannedPersonal / 100).toLocaleString("en-LK")} plan`
+              : actualPersonal > 0
+                ? "No monthly plan set"
+                : "No monthly plan set",
           href: "/financial/personal-spending",
         },
         {
@@ -489,11 +599,13 @@ export function buildMonthlyAnalysis(input: AnalysisInput): MonthlyAnalysis {
       ],
     },
     actualPersonalSpendingCents: actualPersonal,
+    totalSpentCents: totalSpent,
     personalPlanUsagePct: personalUsagePct,
     personalPlanRemainingCents: plannedPersonal - actualPersonal,
     personalPlanStatus,
     freeCashCents: freeCash,
     cashBeforeSavingsCents: cashBeforeSavings,
+    leftAfterGoalsCents: leftAfterGoals,
     daily: dailySeries,
     monthToDateSpentCents: monthToDateSpent,
     averageDailySpendCents: averageDaily,

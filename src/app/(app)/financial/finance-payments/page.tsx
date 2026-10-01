@@ -5,6 +5,7 @@ import { ensureCsrfToken } from "@/lib/auth/csrf";
 import { prisma } from "@/lib/db";
 import { toDateInputValue } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
+import { paymentsRemainingFrom } from "@/lib/finance/analysis";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -13,6 +14,30 @@ import { ConfirmDelete } from "@/components/ui/ConfirmDelete";
 import { RecordForm, type FieldSpec } from "@/components/forms/RecordForm";
 import { ReminderChip } from "@/components/financial/ReminderChip";
 import { createFinancePaymentAction, deleteFinancePaymentAction } from "../actions";
+
+/**
+ * B5: the count shown is what is genuinely still to pay *from today*, not the
+ * figure originally entered. `monthsRemaining` is the whole term, so months
+ * already elapsed since the start date are subtracted.
+ */
+function paymentsLeftText(row: {
+  monthsRemaining: number | null;
+  startDate: Date;
+}): string {
+  const left = paymentsRemainingFrom({
+    id: "",
+    lender: "",
+    description: "",
+    amountCents: 0,
+    dueDayOfMonth: 1,
+    monthsRemaining: row.monthsRemaining,
+    startDate: row.startDate,
+    active: true,
+  });
+  if (left == null) return " · keeps going";
+  if (left === 0) return " · no payments left";
+  return ` · ${left} payment${left === 1 ? "" : "s"} left`;
+}
 
 /** The next time a payment of `dueDayOfMonth` falls due, counting today. */
 function nextDueDate(dayOfMonth: number, from: Date): Date {
@@ -107,11 +132,7 @@ export default async function FinancePaymentsPage() {
                       <p className="mt-0.5 text-small text-text-muted">{row.description}</p>
                       <p className="mt-1 text-small text-text-muted">
                         Due on day {row.dueDayOfMonth} of every month
-                        {row.monthsRemaining == null
-                          ? " · keeps going"
-                          : row.monthsRemaining === 0
-                            ? " · no payments left"
-                            : ` · ${row.monthsRemaining} payment(s) left`}
+                        {paymentsLeftText(row)}
                       </p>
                       {row.active ? (
                         <p className="mt-2">

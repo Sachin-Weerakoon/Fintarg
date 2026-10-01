@@ -45,6 +45,7 @@ export async function syncReminders(userId: string, options: { today?: Date; win
       amountCents: payment.amountCents,
       dueDayOfMonth: payment.dueDayOfMonth,
       monthsRemaining: payment.monthsRemaining,
+      startDate: payment.startDate,
       active: payment.active,
     })),
     pawnedItems: pawnedItems.map((item) => ({
@@ -63,8 +64,9 @@ export async function syncReminders(userId: string, options: { today?: Date; win
       interestRatePct: loan.interestRatePct,
       principalCents: loan.principalCents,
       remainingBalanceCents: loan.remainingBalanceCents,
-      method: loan.method as "flat" | "reducing" | "simple",
+      method: loan.method as "flat" | "reducing" | "simple" | "compound",
       manualMonthlyInterestCents: loan.manualMonthlyInterestCents,
+      startDate: loan.startDate,
     })),
     goals: goals.map((goal) => ({
       id: goal.id,

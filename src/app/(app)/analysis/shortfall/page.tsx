@@ -65,6 +65,7 @@ export default async function ShortfallPage({
         { value: "reducing", label: "Reducing balance (normal bank method)" },
         { value: "flat", label: "Flat rate" },
         { value: "simple", label: "Simple interest" },
+        { value: "compound", label: "Compound monthly" },
       ],
     },
     {

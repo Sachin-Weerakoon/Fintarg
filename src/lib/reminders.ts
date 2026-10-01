@@ -35,9 +35,9 @@ export function dueDateIn(dayOfMonth: number, month: MonthKey): Date {
 }
 
 export interface ReminderSources {
-  financePayments: { id: string; lender: string; description: string; amountCents: Cents; dueDayOfMonth: number; monthsRemaining?: number | null; active: boolean }[];
+  financePayments: { id: string; lender: string; description: string; amountCents: Cents; dueDayOfMonth: number; monthsRemaining?: number | null; startDate?: Date | null; active: boolean }[];
   pawnedItems: { id: string; description: string; monthlyInterestCents: Cents; interestRatePct: number; amountReceivedCents: Cents; nextInterestDueDate?: Date | null; redemptionDate?: Date | null }[];
-  loans: { id: string; lender: string; dueDate?: Date | null; interestRatePct: number; principalCents: Cents; remainingBalanceCents: Cents; method: "flat" | "reducing" | "simple"; manualMonthlyInterestCents?: number | null }[];
+  loans: { id: string; lender: string; dueDate?: Date | null; interestRatePct: number; principalCents: Cents; remainingBalanceCents: Cents; method: "flat" | "reducing" | "simple" | "compound"; manualMonthlyInterestCents?: number | null; startDate?: Date | null }[];
   goals: { id: string; name: string; remainingCents: Cents; endDate?: Date | null }[];
   medicalReminders: { id: string; title: string; dueDate: Date }[];
   agreements: { id: string; title: string; otherParty: string; endDate?: Date | null; status: string }[];
@@ -58,10 +58,20 @@ export function collectUpcoming(
 
   for (const payment of sources.financePayments) {
     if (!payment.active) continue;
-    if (payment.monthsRemaining === 0) continue;
+    const startDate = payment.startDate ?? today;
+    // B5: a payment that has run its course must stop producing reminders.
+    const monthsElapsed = monthDistance(monthKeyOf(startDate), monthKeyOf(today));
+    if (monthsElapsed < 0) continue; // does not start until its start month
+    if (payment.monthsRemaining != null && monthsElapsed >= payment.monthsRemaining) continue;
+
     const due = dueDateIn(payment.dueDayOfMonth, options.month);
     // Roll forward to the next occurrence when today's date has passed.
     const resolved = due < startOfDay(today) ? dueDateIn(payment.dueDayOfMonth, monthKeyOf(addMonths(today, 1))) : due;
+
+    // Never schedule past the final instalment.
+    const instalmentIndex = monthsElapsed + (resolved.getMonth() === today.getMonth() ? 0 : 1);
+    if (payment.monthsRemaining != null && instalmentIndex >= payment.monthsRemaining) continue;
+
     add({
       id: `finance-${payment.id}`,
       title: `${payment.lender} payment`,
@@ -159,6 +169,13 @@ function startOfDay(date: Date): Date {
 
 function monthKeyOf(date: Date): MonthKey {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Whole months from one month key to another; negative when `to` is earlier. */
+function monthDistance(from: MonthKey, to: MonthKey): number {
+  const [fy, fm] = from.split("-").map(Number);
+  const [ty, tm] = to.split("-").map(Number);
+  return (ty! - fy!) * 12 + (tm! - fm!);
 }
 
 export { urgencyOf };

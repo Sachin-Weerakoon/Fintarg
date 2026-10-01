@@ -147,7 +147,7 @@ export const loanSchema = z.object({
   purpose: optionalText(120),
   principal: amountField,
   interestRatePct: z.coerce.number().min(0).max(100).default(0),
-  method: z.enum(["flat", "reducing", "simple"]).default("reducing"),
+  method: z.enum(["flat", "reducing", "simple", "compound"]).default("reducing"),
   startDate: dateField,
   dueDate: z.string().optional(),
   remainingBalance: amountField,

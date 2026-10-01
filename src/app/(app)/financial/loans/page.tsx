@@ -3,7 +3,7 @@ import { Banknote, HandCoins, TrendingDown } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth/session";
 import { ensureCsrfToken } from "@/lib/auth/csrf";
 import { prisma } from "@/lib/db";
-import { formatDate, toDateInputValue } from "@/lib/dates";
+import { currentMonthKey, formatDate, toDateInputValue } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { loanMonthlyInterestCents, type LoanInput } from "@/lib/finance/analysis";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -23,6 +23,7 @@ const METHOD_LABELS: Record<string, string> = {
   reducing: "Reducing balance",
   flat: "Flat rate",
   simple: "Simple interest",
+  compound: "Compound monthly",
 };
 
 export default async function LoansPage() {
@@ -30,6 +31,7 @@ export default async function LoansPage() {
   if (!user) redirect("/login");
 
   const csrf = await ensureCsrfToken();
+  const month = currentMonthKey();
   const rows = await prisma.loan.findMany({
     where: { userId: user.id, deletedAt: null },
     orderBy: [{ remainingBalanceCents: "desc" }, { createdAt: "desc" }],
@@ -43,10 +45,11 @@ export default async function LoansPage() {
     method: row.method as LoanInput["method"],
     remainingBalanceCents: row.remainingBalanceCents,
     manualMonthlyInterestCents: row.manualMonthlyInterestCents,
+    startDate: row.startDate,
     dueDate: row.dueDate,
   }));
 
-  const interestById = new Map(loans.map((loan) => [loan.id, loanMonthlyInterestCents(loan)]));
+  const interestById = new Map(loans.map((loan) => [loan.id, loanMonthlyInterestCents(loan, month)]));
   const interestTotal = loans.reduce((total, loan) => total + (interestById.get(loan.id) ?? 0), 0);
   const owedTotal = loans.reduce((total, loan) => total + loan.remainingBalanceCents, 0);
   const shortfallLoans = rows.filter((row) => row.sourceRef === "shortfall");
@@ -62,9 +65,10 @@ export default async function LoansPage() {
       type: "select",
       defaultValue: "reducing",
       options: [
-        { value: "reducing", label: "Reducing balance" },
+{ value: "reducing", label: "Reducing balance" },
         { value: "flat", label: "Flat rate" },
         { value: "simple", label: "Simple interest" },
+        { value: "compound", label: "Compound monthly" },
       ],
       hint: "Reducing balance is the normal bank method",
     },

@@ -89,9 +89,9 @@ savings goal      30,000   ->  flagged "not possible this month"
 
 | Rule | Behaviour | Code |
 | --- | --- | --- |
-| BR-1 | Outflow = living expenses + finance payments + loan interest + planned personal + savings | `buildMonthlyAnalysis` |
+| BR-1 | Outflow = living expenses (non-personal, medical included) + finance payments due this month + loan interest + pawn interest (D1: in the month it falls due) + `max(planned personal, actual personal)` (D2) + savings | `buildMonthlyAnalysis` |
 | BR-2 | Shortfall = outflow − income, shown with a warning | `buildMonthlyAnalysis`, `NetPositionCard` |
-| BR-3 | A shortfall can be recorded as a loan; its interest then reduces later months | `loanFromShortfall`, `recordShortfallAsLoanAction` |
+| BR-3 | A shortfall can be recorded as a loan; its interest then reduces later months. Interest accrues only from the loan's start month through its due month (D3: `reducing` on the balance, `simple`/`flat` on the original principal, `compound` compounded monthly) | `loanFromShortfall`, `loanMonthlyInterestCents` |
 | BR-4 | Daily target × days in month = monthly target | `deriveGoalAmounts`, `requiredThisMonth` |
 | BR-5 | A goal is flagged unachievable when free cash is below what it needs | `evaluateGoal` |
 | BR-6 | Next-month projection includes known obligations | `MonthlyAnalysis.projection` |

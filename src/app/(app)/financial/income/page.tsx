@@ -78,7 +78,16 @@ export default async function IncomePage() {
     },
     { name: "customIntervalDays", label: "Days between each time", type: "number", min: "1", max: "365", hint: "Leave empty unless you picked Custom" },
     { name: "date", label: "Date", type: "date", required: true, defaultValue: toDateInputValue(new Date()) },
-    { name: "recurring", label: "Repeat every month", type: "checkbox", hint: "Include this in next month's projection" },
+    {
+      name: "recurring",
+      label: "Repeat every month",
+      type: "checkbox",
+      // B6: salary is the default kind, and a salary arrives every month, so the
+      // box starts ticked. The engine also treats a "monthly" frequency as
+      // recurring regardless of this flag, so an unticked salary still counts.
+      checked: true,
+      hint: "Include this in next month's projection",
+    },
     { name: "notes", label: "Notes", type: "text", hint: "Anything you want to remember" },
   ];
 

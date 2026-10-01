@@ -41,8 +41,15 @@ export async function loadAnalysis(
   const historyStart = new Date(start.getFullYear(), start.getMonth() - 3, 1);
 
   const [incomes, expenses, financePayments, loans, pawnedItems, goalRows, plan] = await Promise.all([
+    // B6: a recurring source must be loaded however far back it was entered,
+    // so a salary recorded 8 months ago still counts this month. Non-recurring
+    // income only matters inside the month it landed in.
     prisma.income.findMany({
-      where: { userId, deletedAt: null, date: { gte: historyStart, lte: end } },
+      where: {
+        userId,
+        deletedAt: null,
+        OR: [{ recurring: true, date: { lte: end } }, { date: { gte: start, lte: end } }],
+      },
       orderBy: { date: "desc" },
     }),
     prisma.expense.findMany({
@@ -87,6 +94,7 @@ export async function loadAnalysis(
     amountCents: payment.amountCents,
     dueDayOfMonth: payment.dueDayOfMonth,
     monthsRemaining: payment.monthsRemaining,
+    startDate: payment.startDate,
     active: payment.active,
   }));
 
@@ -98,6 +106,7 @@ export async function loadAnalysis(
     method: loan.method as LoanInput["method"],
     remainingBalanceCents: loan.remainingBalanceCents,
     manualMonthlyInterestCents: loan.manualMonthlyInterestCents,
+    startDate: loan.startDate,
     dueDate: loan.dueDate,
   }));
 

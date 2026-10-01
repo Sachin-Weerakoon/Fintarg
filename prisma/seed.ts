@@ -54,6 +54,10 @@ async function main() {
   });
 
   // The specification's worked example, so the dashboard shows a shortfall.
+  // Income 53,000 - living 28,000 - finance 25,000 - personal 5,000 = a
+  // shortfall of exactly 5,000, with the Rs. 30,000 goal flagged as not
+  // possible this month. The personal line is counted once (D2): the Rs. 5,000
+  // spent against the Rs. 5,000 plan is one outflow term, not two.
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -68,7 +72,7 @@ async function main() {
 
     await prisma.expense.createMany({
       data: [
-        { userId: basic.id, date: new Date(start.getFullYear(), start.getMonth(), 2), amountCents: 1_200_000, categoryName: "Food", recurring: true },
+        { userId: basic.id, date: new Date(start.getFullYear(), start.getMonth(), 2), amountCents: 700_000, categoryName: "Food", recurring: true },
         { userId: basic.id, date: new Date(start.getFullYear(), start.getMonth(), 3), amountCents: 800_000, categoryName: "Transport" },
         { userId: basic.id, date: new Date(start.getFullYear(), start.getMonth(), 4), amountCents: 1_000_000, categoryName: "Utilities", recurring: true },
         { userId: basic.id, date: new Date(start.getFullYear(), start.getMonth(), 6), amountCents: 500_000, categoryName: "Personal/Enjoyment", isPersonal: true },
