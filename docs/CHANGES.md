@@ -4,12 +4,13 @@ One heading per work package: files changed, schema changes, new env vars,
 deviations, and anything left unfinished.
 
 > **Commit-message deviation (WP1).** The prompt requires one commit per work
-> package named `WPn: <title>`. The WP1 source changes were committed mid-task as
-> `c82208f "Corrections Vol.1"` and pushed to `origin/main` before this log was
-> finished — not by me. It contains exactly the 13 WP1 files and nothing else, so
-> the work itself is intact and complete; only the message deviates. I did not
-> rewrite history or force-push to correct it. The follow-up commit carries the
-> `WP1:` prefix and adds this log. Future WPs use the required naming.
+> package named `WPn: <title>`. The WP1 source changes were committed manually by
+> the repository owner mid-task as `c82208f "Corrections Vol.1"` and pushed to
+> `origin/main` before this log was finished. It contains exactly the 13 WP1 files
+> and nothing else, so the work itself is intact and complete; only the message
+> deviates. I did not rewrite history or force-push to correct it. The follow-up
+> commit carries the `WP1:` prefix and adds this log. Future WPs use the required
+> naming.
 
 ---
 

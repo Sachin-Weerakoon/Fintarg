@@ -122,7 +122,9 @@ export async function syncReminders(userId: string, options: { today?: Date; win
 
 export interface DueReminder {
   id: string;
-  email: string;
+  /** Null when the account has no email; the SMS channel handles those. */
+  email: string | null;
+  mobile: string | null;
   userName: string;
   kind: string;
   title: string;
@@ -156,7 +158,8 @@ export async function dueReminders(options: { now?: Date; leadDays?: number } = 
     .map((row) => ({
       id: row.id,
       email: row.user.email,
-      userName: row.user.profile?.fullName ?? row.user.email.split("@")[0],
+      mobile: row.user.mobile,
+      userName: row.user.profile?.fullName ?? row.user.email?.split("@")[0] ?? row.user.mobile ?? "there",
       kind: row.kind,
       title: row.title,
       detail: describeKind(row.kind),

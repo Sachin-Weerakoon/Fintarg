@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isAllowedExtension, isAllowedMimeType, MAX_FILE_BYTES } from "@/lib/storage";
 import { isValidHex } from "@/lib/theme";
+import { identifierField } from "@/lib/identity";
 
 /** Shared primitives - every form in the app validates with the same messages. */
 
@@ -56,16 +57,41 @@ const phoneField = z
 
 /* ----------------------------------------------------------------- accounts */
 
+/** One field accepts either an email address or a mobile number (FR-1.1). */
+export const identifierSchema = identifierField;
+
+/**
+ * PDPA No. 9 of 2022 (NFR-7): consent is recorded explicitly, with the version
+ * of the notice that was agreed to.
+ */
+export const CONSENT_VERSION = "2026-01";
+
 export const registerSchema = z.object({
   fullName: z.string().trim().min(2, "Enter your full name").max(80),
-  email: emailField,
+  identifier: identifierField,
   password: passwordField,
   edition: z.enum(["basic", "business"]),
+  consent: z.literal("on", {
+    errorMap: () => ({ message: "Please accept the privacy notice to continue" }),
+  }),
 });
 
 export const loginSchema = z.object({
-  email: emailField,
+  identifier: identifierField,
   password: z.string().min(1, "Enter your password"),
+});
+
+export const forgotPasswordSchema = z.object({
+  identifier: identifierField,
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(10, "That reset link is not valid"),
+  password: passwordField,
+  confirmPassword: z.string().min(1, "Type the new password again"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "The two passwords do not match",
+  path: ["confirmPassword"],
 });
 
 export const profileSchema = z.object({

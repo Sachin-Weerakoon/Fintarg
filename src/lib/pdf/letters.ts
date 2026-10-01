@@ -24,7 +24,7 @@ export interface LetterPdfInput {
   recipientName: string;
   recipientAddress?: string;
   signerName: string;
-  signerEmail: string;
+  signerEmail?: string;
   todayLabel: string;
   company?: LetterPdfCompany | null;
   accentHex: string;

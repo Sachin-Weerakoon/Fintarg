@@ -44,16 +44,22 @@ export function RegisterForm({ csrfToken }: { csrfToken: string }) {
         />
       </FormField>
 
-      <FormField id="email" label="Email" required error={errors.email}>
+      <FormField
+        id="identifier"
+        label="Email or mobile number"
+        required
+        hint="Either one works. A mobile number is used for SMS sign-in."
+        error={errors.identifier}
+      >
         <TextInput
-          id="email"
-          name="email"
-          type="email"
+          id="identifier"
+          name="identifier"
+          type="text"
           inputMode="email"
-          autoComplete="email"
+          autoComplete="username"
           required
-          error={errors.email}
-          placeholder="you@example.com"
+          error={errors.identifier}
+          placeholder="you@example.com or 0771234567"
         />
       </FormField>
 
@@ -97,6 +103,29 @@ export function RegisterForm({ csrfToken }: { csrfToken: string }) {
           />
         </div>
       </fieldset>
+
+      <FormField
+        id="consent"
+        label="I agree to the privacy notice"
+        error={errors.consent}
+      >
+        <div className="flex items-start gap-2">
+          <input
+            id="consent"
+            name="consent"
+            type="checkbox"
+            required
+            className="mt-1 h-4 w-4 shrink-0 rounded border-border accent-[var(--accent)]"
+            aria-describedby="consent-hint"
+          />
+          <p id="consent-hint" className="text-caption text-text-muted">
+            Fintarg stores your money records, goals and documents to show them back to
+            you. Files are encrypted, and you can export or delete everything at any
+            time. We handle your data under Sri Lanka&apos;s Personal Data Protection
+            Act No. 9 of 2022.
+          </p>
+        </div>
+      </FormField>
 
       <SubmitButton pendingLabel="Creating your account...">Create account</SubmitButton>
 
@@ -168,16 +197,21 @@ export function LoginForm({ csrfToken }: { csrfToken: string }) {
         </p>
       ) : null}
 
-      <FormField id="email" label="Email" required error={errors.email}>
+      <FormField
+        id="identifier"
+        label="Email or mobile number"
+        required
+        error={errors.identifier}
+      >
         <TextInput
-          id="email"
-          name="email"
-          type="email"
+          id="identifier"
+          name="identifier"
+          type="text"
           inputMode="email"
-          autoComplete="email"
+          autoComplete="username"
           required
-          error={errors.email}
-          placeholder="you@example.com"
+          error={errors.identifier}
+          placeholder="you@example.com or 0771234567"
         />
       </FormField>
 
@@ -191,6 +225,12 @@ export function LoginForm({ csrfToken }: { csrfToken: string }) {
           error={errors.password}
         />
       </FormField>
+
+      <div className="flex justify-end">
+        <Link href="/forgot-password" className="text-small font-medium text-accent hover:underline">
+          Forgotten your password?
+        </Link>
+      </div>
 
       <SubmitButton pendingLabel="Signing you in...">Sign in</SubmitButton>
 

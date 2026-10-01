@@ -34,8 +34,15 @@ export async function GET(request: Request) {
   const due = await dueReminders({ now });
   let sent = 0;
   const failed: string[] = [];
+  const skippedNoChannel: string[] = [];
 
   for (const reminder of due) {
+    // An account can be registered with a mobile only (FR-1.1), so a reminder
+    // with no email has no email channel. SMS is wired in WP10.
+    if (!reminder.email) {
+      skippedNoChannel.push(reminder.id);
+      continue;
+    }
     try {
       const { subject, text } = reminderEmail(reminder);
       await sendEmail({ to: reminder.email, subject, text });
@@ -55,6 +62,7 @@ export async function GET(request: Request) {
     scheduled,
     due: due.length,
     sent,
+    skippedNoChannel,
     failed,
     at: now.toISOString(),
   });

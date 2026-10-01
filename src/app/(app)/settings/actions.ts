@@ -3,13 +3,14 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth/session";
+import { getCurrentUser, deleteOtherSessions, currentSessionToken } from "@/lib/auth/session";
 import { assertCsrf, ensureCsrfToken } from "@/lib/auth/csrf";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import {
   appearanceSchema,
   contactSchema,
   flattenErrors,
+  passwordField,
   profileSchema,
   type FormState,
 } from "@/lib/validation";
@@ -170,7 +171,7 @@ export async function changePasswordAction(_state: FormState, formData: FormData
   const parsed = z
     .object({
       currentPassword: z.string().min(1, "Enter your current password"),
-      newPassword: z.string().min(8, "Use at least 8 characters").max(128),
+      newPassword: passwordField,
     })
     .safeParse({
       currentPassword: formData.get("currentPassword"),
@@ -190,15 +191,27 @@ export async function changePasswordAction(_state: FormState, formData: FormData
   }
 
   await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(parsed.data.newPassword) } });
+  // B11: changing a password signs every other device out.
+  const removed = await deleteOtherSessions(user.id, (await currentSessionToken()) ?? undefined);
+  await prisma.auditLog.create({
+    data: { userId: user.id, action: "auth.password_changed", entityType: "user", meta: JSON.stringify({ otherSessionsRemoved: removed }) },
+  });
+
   revalidatePath("/settings");
-  return { status: "success", message: "Your password is changed." };
+  return {
+    status: "success",
+    message: removed
+      ? `Your password is changed. ${removed} other session(s) were signed out.`
+      : "Your password is changed.",
+  };
 }
 
 /**
- * FR-15 upgrade path, Basic -> Business.
+ * FR-15 upgrade path, Basic <-> Business.
  *
- * Billing is Phase 3, so this flips the edition immediately and records who
- * changed it. A payment provider would gate the same call.
+ * Billing is Phase 3. When `BILLING_ENABLED` is true the action refuses, because
+ * flipping the edition without a payment would hand out a paid feature for free.
+ * With it unset (the default) the upgrade stays free, as decided in D5.
  */
 export async function upgradeToBusinessAction(_state: FormState, formData: FormData): Promise<FormState> {
   await assertCsrf(formData);
@@ -206,6 +219,12 @@ export async function upgradeToBusinessAction(_state: FormState, formData: FormD
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
+  if (process.env.BILLING_ENABLED === "true") {
+    return { status: "error", message: "Payments are not set up yet." };
+  }
+
+  // B8: the form now submits this field, so the action no longer depends on a
+  // missing `edition` input to decide what to do.
   const requested = formData.get("edition");
   if (!isEdition(requested)) {
     return { status: "error", message: "That plan is not available." };

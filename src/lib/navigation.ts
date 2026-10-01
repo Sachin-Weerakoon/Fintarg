@@ -6,10 +6,11 @@ import {
   HeartPulse,
   LayoutDashboard,
   Settings,
+  ShieldCheck,
   Target,
 } from "lucide-react";
 import type { ComponentType } from "react";
-import { can, type Edition, type Feature } from "@/lib/plans";
+import { featuresOf, type Edition, type Feature } from "@/lib/plans";
 
 export interface NavItem {
   key: string;
@@ -18,6 +19,8 @@ export interface NavItem {
   description: string;
   icon: ComponentType<{ className?: string; "aria-hidden"?: boolean | "true" | "false" }>;
   feature?: Feature;
+  /** Only shown to accounts whose role is "admin" (FR-1.6). */
+  adminOnly?: boolean;
   /** Only shown in the mobile "More" sheet, not the bottom bar. */
   overflowOnly?: boolean;
 }
@@ -102,17 +105,43 @@ export const NAV_ITEMS: NavItem[] = [
     feature: "core.settings",
     overflowOnly: true,
   },
+  {
+    key: "admin",
+    href: "/admin",
+    label: "Admin",
+    description: "Accounts and feature flags",
+    icon: ShieldCheck,
+    adminOnly: true,
+    overflowOnly: true,
+  },
 ];
 
-export function navItemsFor(edition: Edition): NavItem[] {
-  return NAV_ITEMS.filter((item) => !item.feature || can(edition, item.feature));
+/**
+ * Nav for an edition.
+ *
+ * `resolvedFeatures` is the admin-merged feature list from the session, so a flag
+ * switched off in the database removes the item here without a deploy. `role`
+ * gates the admin entry.
+ */
+export function navItemsFor(
+  edition: Edition,
+  options: { resolvedFeatures?: Feature[] | null; role?: "user" | "admin" } = {},
+): NavItem[] {
+  return NAV_ITEMS.filter((item) => {
+    if (item.adminOnly && options.role !== "admin") return false;
+    if (!item.feature) return true;
+    return featuresOf(edition, options.resolvedFeatures).includes(item.feature);
+  });
 }
 
 /** Mobile bottom bar: Home | Analysis | Goals | More (UIX-001). */
 export const BOTTOM_BAR_KEYS = ["home", "analysis", "goals"] as const;
 
-export function secondaryItems(edition: Edition): NavItem[] {
-  return navItemsFor(edition).filter(
+export function secondaryItems(
+  edition: Edition,
+  options: { resolvedFeatures?: Feature[] | null; role?: "user" | "admin" } = {},
+): NavItem[] {
+  return navItemsFor(edition, options).filter(
     (item) => item.overflowOnly && !BOTTOM_BAR_KEYS.includes(item.key as (typeof BOTTOM_BAR_KEYS)[number]),
   );
 }

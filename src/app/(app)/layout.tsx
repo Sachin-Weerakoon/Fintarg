@@ -3,6 +3,9 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { planLabel } from "@/lib/plans";
 import { MobileNav, Sidebar, SystemThemeWatcher } from "@/components/layout/Nav";
 import { SignOutButton } from "@/components/layout/SignOutButton";
+import { AlertBanner } from "@/components/ui/AlertBanner";
+import { VerifyEmailButton } from "@/components/forms/VerifyEmailButton";
+import { ensureCsrfToken } from "@/lib/auth/csrf";
 
 /**
  * Authenticated shell: desktop left sidebar, mobile bottom navigation, and a
@@ -13,8 +16,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const displayName = user.fullName ?? user.email.split("@")[0];
+  const displayName = user.displayName;
   const label = planLabel(user.edition);
+  // Only needed when the banner below actually renders.
+  const csrfToken = user.needsVerification ? await ensureCsrfToken() : "";
 
   return (
     <div className="min-h-dvh lg:flex">
@@ -25,7 +30,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </a>
 
       <aside className="no-scrollbar sticky top-0 hidden h-dvh w-64 shrink-0 overflow-y-auto border-r border-border bg-surface lg:block">
-        <Sidebar edition={user.edition} userName={displayName} planLabel={label} />
+        <Sidebar edition={user.edition} features={user.features} role={user.role} userName={displayName} planLabel={label} />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -48,11 +53,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </header>
 
         <main id="main" className="flex-1 px-content-x py-4 pb-nav lg:pb-section">
+          {user.needsVerification ? (
+            <div className="mx-auto mb-4 w-full max-w-5xl">
+              <AlertBanner
+                level="warning"
+                title="Confirm your email address"
+                message="We have sent a verification link. It keeps reminders and your data export going to an address you actually own."
+                action={<VerifyEmailButton csrfToken={csrfToken} />}
+              />
+            </div>
+          ) : null}
           <div className="mx-auto w-full max-w-5xl">{children}</div>
         </main>
       </div>
 
-      <MobileNav edition={user.edition} userName={displayName} planLabel={label} />
+      <MobileNav edition={user.edition} features={user.features} role={user.role} userName={displayName} planLabel={label} />
     </div>
   );
 }

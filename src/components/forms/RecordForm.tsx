@@ -18,7 +18,7 @@ import { cn } from "@/lib/cn";
 export type FieldSpec = {
   name: string;
   label: string;
-  type: "text" | "amount" | "date" | "month" | "number" | "select" | "textarea" | "checkbox" | "file";
+  type: "text" | "password" | "amount" | "date" | "month" | "number" | "select" | "textarea" | "checkbox" | "file";
   options?: { value: string; label: string }[];
   hint?: string;
   required?: boolean;
@@ -33,6 +33,8 @@ export type FieldSpec = {
   accept?: string;
   rows?: number;
   readOnly?: boolean;
+  /** Password fields only: the right value keeps browser password managers useful. */
+  autoComplete?: "current-password" | "new-password";
 };
 
 const IDLE: FormState = { status: "idle" };
@@ -56,6 +58,7 @@ export function RecordForm({
   successMessage,
   csrfToken,
   className,
+  hidden,
 }: {
   action: (state: FormState, formData: FormData) => Promise<FormState>;
   fields: FieldSpec[];
@@ -67,6 +70,8 @@ export function RecordForm({
   successMessage?: string;
   csrfToken?: string;
   className?: string;
+  /** Values carried in the POST but not shown, e.g. which plan is being chosen. */
+  hidden?: Record<string, string>;
 }) {
   const [state, formAction] = useActionState(action, IDLE);
   const generatedId = useId();
@@ -91,6 +96,11 @@ export function RecordForm({
   return (
     <form action={formAction} encType={resolvedEncType ?? encType} className={cn("flex flex-col gap-4", className)} noValidate>
       {csrfToken ? <input type="hidden" name="_csrf" value={csrfToken} /> : null}
+      {hidden
+        ? Object.entries(hidden).map(([name, value]) => (
+            <input key={name} type="hidden" name={name} value={value} />
+          ))
+        : null}
       <div aria-live="polite" className="sr-only">
         {state.status === "error" ? state.message : ""}
         {state.status === "success" ? state.message : ""}
@@ -225,6 +235,9 @@ function renderControl(
       );
     case "textarea":
       return <TextAreaInput {...common} rows={field.rows ?? 4} />;
+    case "password":
+      // B11: masked, never echoed back into the page.
+      return <TextInput {...common} type="password" autoComplete={field.autoComplete} />;
     case "file":
       return <FileField id={id} name={field.name} hint={field.hint} accept={field.accept} />;
     default:

@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   const buffer = await renderAnalysisPdf({
     analysis,
     edition: user.edition,
-    userName: user.fullName ?? user.email,
+    userName: user.displayName,
     todayLabel: formatDate(new Date()),
     accentHex: ensureReadableOnWhite(user.themeAccent),
   });

@@ -19,11 +19,23 @@ datasource db {
 
 model User {
   id           String    @id @default(cuid())
-  email        String    @unique
+  /// Nullable so an account can be created with only a mobile number (FR-1.1).
+  /// Both identifiers are optional individually, but at least one is required
+  /// by `registerSchema`.
+  email        String?   @unique
+  mobile       String?   @unique
   passwordHash String
   edition      String    @default("basic") // "basic" | "business" (see src/lib/plans.ts)
   plan         String    @default("free") // internal plan key, feature flags derive from this
+  /// "user" | "admin" (FR-1.6). Admins manage accounts, never financial content.
+  role         String    @default("user")
+  /// PDPA No. 9 of 2022 consent, captured at registration (NFR-7).
+  consentAt    DateTime?
+  consentVersion String?
   emailVerifiedAt DateTime?
+  /// Persistent lock-out (NFR-5): 8 failed sign-ins pauses the account 15 minutes.
+  failedLogins Int       @default(0)
+  lockedUntil  DateTime?
   suspendedAt  DateTime?
   lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())
@@ -49,6 +61,8 @@ model User {
   reminders      Reminder[]
   deletionRequests DeletionRequest[]
   auditLogs      AuditLog[]
+  passwordResetTokens PasswordResetToken[]
+  verificationTokens  VerificationToken[]
 
   @@index([email])
 }
@@ -58,6 +72,9 @@ model Session {
   userId       String
   tokenHash    String   @unique
   expiresAt    DateTime
+  /// Set when the password was re-entered. Restricted vault downloads require a
+  /// fresh sign-in within 30 minutes (FR-12.5).
+  reauthAt     DateTime?
   createdAt    DateTime @default(now())
   lastSeenAt   DateTime @default(now())
   userAgent    String?
@@ -66,6 +83,49 @@ model Session {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+/// One-time password reset (FR-1.3). Only the SHA-256 hash is stored, so a
+/// database leak cannot be replayed against the reset endpoint.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// One-time email/mobile verification. Optional: it never blocks sign-in.
+model VerificationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  purpose   String    @default("email") // "email" | "mobile"
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Admin-editable feature flags (FR-15.1). `PLAN_MATRIX` in `src/lib/plans.ts`
+/// stays the code default; a row here overrides it for that plan, so a feature
+/// can be switched off without a deploy.
+model PlanFeature {
+  plan    String
+  feature String
+  enabled Boolean  @default(true)
+
+  @@id([plan, feature])
+  @@index([plan])
 }
 
 model Profile {

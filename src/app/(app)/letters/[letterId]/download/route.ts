@@ -33,7 +33,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ let
   }
 
   const variables = readVariables(letter.variablesJson);
-  const signerName = user.fullName ?? user.email.split("@")[0];
+  const signerName = user.fullName ?? user.displayName;
   const recipientName = variables.recipientName?.trim() || letter.title;
   const recipientAddress = variables.recipientAddress?.trim() || undefined;
   const companyAccent = letter.company?.accentColor ?? "";
@@ -45,7 +45,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ let
     recipientName,
     recipientAddress,
     signerName,
-    signerEmail: user.email,
+    signerEmail: user.email ?? undefined,
     todayLabel: formatDate(new Date()),
     company: letter.company
       ? {

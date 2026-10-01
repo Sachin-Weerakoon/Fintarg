@@ -11,7 +11,7 @@ import {
   type NavItem,
 } from "@/lib/navigation";
 import { cn } from "@/lib/cn";
-import type { Edition } from "@/lib/plans";
+import type { Edition, Feature } from "@/lib/plans";
 import { useClickOutside } from "@/components/ui/useClickOutside";
 
 function isActive(pathname: string, href: string, key: string) {
@@ -22,17 +22,21 @@ function isActive(pathname: string, href: string, key: string) {
 /** Desktop left sidebar (UIX-001 navigation). */
 export function Sidebar({
   edition,
+  features,
+  role,
   userName,
   planLabel,
   onNavigate,
 }: {
   edition: Edition;
+  features?: Feature[] | null;
+  role?: "user" | "admin";
   userName: string;
   planLabel: string;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const items = navItemsFor(edition);
+  const items = navItemsFor(edition, { resolvedFeatures: features, role });
 
   return (
     <div className="flex h-full flex-col gap-6 p-4">
@@ -107,14 +111,14 @@ function NavIcon({ item, active }: { item: NavItem; active: boolean }) {
 }
 
 /** Mobile bottom navigation: Home | Analysis | Goals | More (UIX-001). */
-export function MobileNav({ edition, userName, planLabel }: { edition: Edition; userName: string; planLabel: string }) {
+export function MobileNav({ edition, features, role, userName, planLabel }: { edition: Edition; features?: Feature[] | null; role?: "user" | "admin"; userName: string; planLabel: string }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
-  const items = navItemsFor(edition);
+  const items = navItemsFor(edition, { resolvedFeatures: features, role });
   const barItems = BOTTOM_BAR_KEYS.map((key) => items.find((item) => item.key === key)).filter(
     (item): item is NavItem => Boolean(item),
   );
-  const overflow = secondaryItems(edition);
+  const overflow = secondaryItems(edition, { resolvedFeatures: features, role });
   const more = items.find((item) => item.key === "letters");
   const moreActive = more ? isActive(pathname, more.href, more.key) : false;
 

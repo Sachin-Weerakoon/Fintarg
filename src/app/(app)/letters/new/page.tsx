@@ -49,7 +49,7 @@ export default async function NewLetterPage({
     ensureCsrfToken(),
   ]);
 
-  const signerName = user.fullName ?? user.email.split("@")[0];
+  const signerName = user.fullName ?? user.displayName;
   const today = formatDate(new Date());
   const selectedCompany = companies[0];
 
@@ -62,7 +62,7 @@ export default async function NewLetterPage({
 
   const defaultBody = template.render(defaultVars, {
     signerName,
-    signerEmail: user.email,
+    signerEmail: user.email ?? "",
     companyName: selectedCompany?.name,
     companyAddress: selectedCompany?.address ?? undefined,
     today,

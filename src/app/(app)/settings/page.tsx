@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { FolderLock, HeartPulse, Lock } from "lucide-react";
+import { Download, FolderLock, HeartPulse, Lock } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth/session";
 import { ensureCsrfToken } from "@/lib/auth/csrf";
 import { prisma } from "@/lib/db";
@@ -11,7 +11,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { AlertBanner } from "@/components/ui/AlertBanner";
 import { Badge } from "@/components/ui/Badge";
-import { ButtonLink } from "@/components/ui/Button";
+import { Button, ButtonLink } from "@/components/ui/Button";
 import { ConfirmDelete } from "@/components/ui/ConfirmDelete";
 import { RecordForm, type FieldSpec } from "@/components/forms/RecordForm";
 import { AppearanceForm } from "@/components/forms/AppearanceForm";
@@ -42,7 +42,7 @@ export default async function SettingsPage() {
 
   const profileFields: FieldSpec[] = [
     { name: "fullName", label: "Full name", type: "text", required: true, defaultValue: profile?.fullName ?? "" },
-    { name: "email", label: "Email", type: "text", required: true, defaultValue: user.email },
+    { name: "email", label: "Email", type: "text", required: true, defaultValue: user.email ?? "" },
     { name: "mobile", label: "Mobile number", type: "text", defaultValue: profile?.mobile ?? "", hint: "e.g. 0771234567" },
     { name: "dateOfBirth", label: "Date of birth", type: "date", defaultValue: profile?.dateOfBirth ? toDateInputValue(profile.dateOfBirth) : "" },
     { name: "nicNumber", label: "NIC number", type: "text", defaultValue: profile?.nicNumber ?? "", hint: "Stored privately. Never shown to anyone." },
@@ -155,8 +155,8 @@ export default async function SettingsPage() {
         <RecordForm
           action={changePasswordAction}
           fields={[
-            { name: "currentPassword", label: "Current password", type: "text", required: true, span: 2 },
-            { name: "newPassword", label: "New password", type: "text", required: true, span: 2 },
+            { name: "currentPassword", label: "Current password", type: "password", required: true, span: 2, autoComplete: "current-password" },
+            { name: "newPassword", label: "New password", type: "password", required: true, span: 2, autoComplete: "new-password", hint: "At least 8 characters, with one letter and one number. This signs out your other devices." },
           ]}
           csrfToken={csrfToken}
           idPrefix="password"
@@ -203,6 +203,7 @@ export default async function SettingsPage() {
                 <RecordForm
                   action={upgradeToBusinessAction}
                   fields={[]}
+                  hidden={{ edition: "business" }}
                   csrfToken={csrfToken}
                   idPrefix="upgrade"
                   submitLabel="Upgrade to Business"
@@ -271,8 +272,18 @@ export default async function SettingsPage() {
           </ul>
 
           <div className="flex flex-col gap-2">
-            <p className="text-small font-medium text-text">Documents</p>
+            <p className="text-small font-medium text-text">Your data</p>
+            <p className="text-caption text-text-muted">
+              Download one file with every record we hold for you - income, expenses, loans, goals, letters,
+              medical and reminder history. Vault document contents are not included; only their details.
+            </p>
             <div className="flex flex-wrap gap-2">
+              <form action="/settings/export" method="post">
+                <input type="hidden" name="_csrf" value={csrfToken} />
+                <Button type="submit" variant="secondary" size="sm" icon={<Download aria-hidden className="h-4 w-4" />}>
+                  Download my data
+                </Button>
+              </form>
               <ButtonLink href="/vault" variant="secondary" size="sm" icon={<FolderLock aria-hidden className="h-4 w-4" />}>
                 Open the document vault
               </ButtonLink>

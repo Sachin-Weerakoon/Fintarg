@@ -96,7 +96,7 @@ export default async function HomePage({
     { today, month },
   );
 
-  const firstName = (user.fullName ?? user.email.split("@")[0]).split(" ")[0];
+  const firstName = (user.fullName ?? user.displayName).split(" ")[0];
   const isEmpty = raw.incomes.length === 0 && raw.expenses.length === 0;
 
   return (
