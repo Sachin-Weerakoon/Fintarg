@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { isAuthorised } from "@/lib/cron-auth";
-import { dueReminders, reminderEmail, syncReminders } from "@/lib/reminders/schedule";
+import { dueReminders, reminderEmail, reminderSms, syncReminders } from "@/lib/reminders/schedule";
 import { sendEmail } from "@/lib/mailer";
+import { sendSms } from "@/lib/auth/sms";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Scheduled reminders (NFR: email by default).
+ * Scheduled reminders (NFR: "Reminders: email by default").
  *
- * Run daily. Materialises reminder rows for every account, emails the ones that
- * are within the lead window, and marks them sent so a rerun is harmless.
+ * Run daily. Materialises reminder rows for every account, sends the ones that
+ * are inside that account's own lead window, and marks them sent so a rerun is
+ * harmless. Email is the channel; an account registered with a mobile only
+ * (FR-1.1) falls back to SMS rather than silently hearing nothing.
  */
 export async function GET(request: Request) {
   if (!isAuthorised(request)) {
@@ -31,26 +34,34 @@ export async function GET(request: Request) {
     scheduled += result.scheduled;
   }
 
+  // No `leadDays` here on purpose: each account's own preference is applied.
   const due = await dueReminders({ now });
-  let sent = 0;
+  let sentEmail = 0;
+  let sentSms = 0;
   const failed: string[] = [];
   const skippedNoChannel: string[] = [];
 
   for (const reminder of due) {
-    // An account can be registered with a mobile only (FR-1.1), so a reminder
-    // with no email has no email channel. SMS is wired in WP10.
-    if (!reminder.email) {
+    const channel = reminder.email ? "email" : reminder.mobile ? "sms" : null;
+    if (!channel) {
       skippedNoChannel.push(reminder.id);
       continue;
     }
     try {
-      const { subject, text } = reminderEmail(reminder);
-      await sendEmail({ to: reminder.email, subject, text });
+      if (channel === "email") {
+        const { subject, text } = reminderEmail(reminder);
+        await sendEmail({ to: reminder.email!, subject, text });
+      } else {
+        await sendSms({ to: reminder.mobile!, body: reminderSms(reminder) });
+      }
+      // `sentAt: null` in the where clause means two concurrent cron runs cannot
+      // both deliver the same reminder.
       await prisma.reminder.updateMany({
         where: { id: reminder.id, sentAt: null },
-        data: { sentAt: new Date() },
+        data: { sentAt: new Date(), channel },
       });
-      sent += 1;
+      if (channel === "email") sentEmail += 1;
+      else sentSms += 1;
     } catch (error) {
       failed.push(`${reminder.id}: ${error instanceof Error ? error.message : "unknown error"}`);
     }
@@ -61,7 +72,9 @@ export async function GET(request: Request) {
     accounts: users.length,
     scheduled,
     due: due.length,
-    sent,
+    sent: sentEmail + sentSms,
+    sentEmail,
+    sentSms,
     skippedNoChannel,
     failed,
     at: now.toISOString(),

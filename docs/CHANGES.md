@@ -128,3 +128,103 @@ non-duplication, and `leftAfterGoalsCents`.
 
 Nothing in WP1. The D6 display line is computed and available on the model, but the
 goal card and Analysis text that render it are added in WP5/WP11 as specified.
+
+## WP2 — Accounts, authentication, administration, feature flags and data export
+
+Covers FR-1 (email or mobile, forgotten password, email verification), FR-1.6
+(role), FR-12.5 (re-authentication), FR-14 (plan feature gating), FR-15.1
+(admin-settable feature flags) and NFR-7 (data portability).
+
+### Schema
+
+`User.email` is now nullable and unique, so an account can be registered with a
+mobile number only (FR-1.1). Added `User.mobile`, `role`, `consentAt`,
+`consentVersion`, `failedLogins` and `lockedUntil`, plus `PasswordResetToken`,
+`VerificationToken` and `PlanFeature`. `Session.reauthAt` records when a password
+or other sensitive value was last confirmed (FR-12.5).
+
+Applied with `prisma db push --skip-generate --accept-data-loss`. No rows were
+dropped: the previously non-null `email` became nullable, which only widens.
+
+### Identity
+
+`src/lib/identity.ts` is the single place that understands an account identifier.
+`parseIdentifier` decides email versus mobile; `normaliseMobile` rewrites
+`+94 77 123 4567`, `94-771234567` and `077 123 4567` to `0771234567` and rejects
+anything that is not exactly ten digits. `displayNameFor` never throws on the now
+nullable email, so the header cannot render blank.
+
+### Authentication
+
+- Registration takes an email *or* a mobile, and stores consent (`consentAt`,
+  `consentVersion`) with the account.
+- Sign-in looks the account up by either identifier and returns one generic
+  message, so a wrong email and a wrong mobile are indistinguishable.
+- Eight consecutive failures lock the account for fifteen minutes. The counter is
+  persistent rather than in-memory, and resets on success.
+- Forgot/reset password uses a SHA-256 hashed, single-use token expiring in 30
+  minutes. Starting a new reset invalidates the previous one, and a successful
+  reset deletes *every* session for that user so it genuinely evicts anyone else.
+- The link is emailed or texted depending on which identifier was used.
+- Email verification is optional and never blocks sign-in. Confirmation requires a
+  POST rather than a link click, because mail scanners prefetch links and would
+  otherwise consume the token before the user does.
+
+### Sessions and re-authentication
+
+`Session.reauthAt` with `touchReauth`, `currentReauthAt`, `currentSessionToken` and
+`deleteOtherSessions`. Changing a password invalidates all other sessions and
+writes an audit row.
+
+### Plan gating and admin feature flags
+
+`can()` stays synchronous. The admin-merged list is resolved once per request in
+`getCurrentUser` and passed down as `featuresOf(edition, resolvedFeatures)`, which
+keeps client components able to call it.
+
+A `PlanFeature` row is a complete override for its (plan, feature) pair: `false`
+removes the feature, `true` grants one the matrix did not, and an absent row defers
+to `PLAN_MATRIX`. Saving calls `invalidatePlanFeatureCache()`, so an admin change
+applies on the next request with no deploy.
+
+Administration acts on *access only*: an admin can change a plan or role, pause an
+account, or toggle a feature. An admin cannot read or write anyone's money records
+or documents, because those pages scope every query by `userId` and the admin
+pages never query them.
+
+### Data export
+
+`POST /settings/export` (CSRF required, so a link prefetcher cannot trigger it)
+returns one JSON file holding every record the signed-in user owns, all scoped to
+their own `userId`. Vault document *bytes* are deliberately excluded and only
+metadata is included, because the files stay encrypted in the vault.
+
+### Deviations and judgement calls
+
+- `POST /verify-email` became `POST /verify-email/confirm`. A page and a route cannot
+  both resolve to `/verify-email`, and the production build failed on the collision.
+- `savePlanFeaturesAction` is a plain form action, not a `useActionState` action: it
+  drives a whole matrix table and returns no field-level state.
+- The unverified-email banner is a reminder, not a gate. Nothing is blocked, because
+  FR-1.3 treats verification as optional.
+- Seed data keeps `admin@fintarg.lk`, per the WP1 seed conventions.
+
+### Tests
+
+31 new cases in two files; the suite went from 62 to 93 passing.
+
+`src/lib/identity.test.ts` (14) covers mobile normalisation and rejection,
+identifier classification, the display-name fallback chain including the all-null
+case, and that `describeIdentifier` masks a mobile number so audit rows do not
+become a list of phone numbers.
+
+`src/lib/plans.test.ts` (17) covers plan mapping, Basic/Business separation, and
+`mergeFeatures`: an empty override list returns the code default, a `false` row
+removes a feature, a `true` row grants an unlisted one, an unknown feature name is
+ignored, `PLAN_MATRIX` is never mutated, and a repeated feature lets the last row
+win.
+
+### Not finished
+
+Nothing in WP2. The seeded `admin@fintarg.lk` account carries `role = "admin"`; an
+existing account can be promoted with the admin role action.

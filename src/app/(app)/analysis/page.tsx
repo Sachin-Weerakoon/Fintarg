@@ -5,7 +5,8 @@ import { ArrowRight, CalendarClock, Download, Target, TrendingDown, TrendingUp }
 import { getCurrentUser } from "@/lib/auth/session";
 import { loadAnalysis } from "@/lib/finance/load";
 import { currentMonthKey, formatMonthLabel } from "@/lib/dates";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, sum } from "@/lib/money";
+import { GoalAffordabilityLine } from "@/components/goals/GoalAffordabilityLine";
 import { NetPositionCard, StatTile } from "@/components/NetPositionCard";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { AlertBanner } from "@/components/ui/AlertBanner";
@@ -219,7 +220,15 @@ export default async function AnalysisPage({
             }
           />
         ) : (
-          <ul className="flex flex-col gap-4">
+          <>
+            {/* D6: the whole-month figure the per-goal rows below cannot each show. */}
+            <GoalAffordabilityLine
+              incomeCents={analysis.income.totalCents}
+              goalsRequiredCents={sum(analysis.goals.map((g) => g.requiredThisMonthCents))}
+              goalCount={analysis.goals.length}
+              heading="What saving for these goals would leave"
+            />
+            <ul className="mt-4 flex flex-col gap-4">
             {analysis.goals.map((goal) => (
               <li key={goal.goalId} className="rounded-card border border-border p-3">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -245,7 +254,8 @@ export default async function AnalysisPage({
                 <p className="mt-2 text-caption text-text-muted">{goal.message}</p>
               </li>
             ))}
-          </ul>
+            </ul>
+          </>
         )}
       </Card>
 

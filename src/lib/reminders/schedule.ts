@@ -14,6 +14,16 @@ import { collectUpcoming, type ReminderSources } from "@/lib/reminders";
 
 const MS_DAY = 86_400_000;
 
+/**
+ * Ceiling on any user's lead-time setting, and the bounds the Settings form
+ * enforces (`min(0).max(30)`). The query window has to reach this far so no user
+ * is silently left out by the widest preference in the system.
+ */
+export const MAX_LEAD_DAYS = 30;
+const DEFAULT_LEAD_DAYS = 3;
+
+const APP_ORIGIN = (process.env.APP_ORIGIN ?? "http://localhost:3000").replace(/\/+$/, "");
+
 export function reminderKey(kind: string, entityId: string, dueDate: Date): string {
   return `${kind}:${entityId}:${dueDate.toISOString().slice(0, 10)}`;
 }
@@ -133,11 +143,24 @@ export interface DueReminder {
   amountCents?: number;
 }
 
-/** Reminders that are due soon enough to be worth emailing, and unsent. */
-export async function dueReminders(options: { now?: Date; leadDays?: number } = {}): Promise<DueReminder[]> {
+/**
+ * Reminders that are due soon enough to be worth emailing, and unsent.
+ *
+ * The lead time is a *per-user* preference (`profile.reminderLeadDays`), so this
+ * queries the widest window any user could ask for and then filters each row
+ * against that account's own setting. Passing `leadDays` overrides it for testing;
+ * `null` means "use each account's setting".
+ *
+ * A row more than one day past due is still included: someone who was offline
+ * yesterday should still hear about it today.
+ */
+export async function dueReminders(
+  options: { now?: Date; leadDays?: number | null } = {},
+): Promise<DueReminder[]> {
   const now = options.now ?? new Date();
-  const leadDays = options.leadDays ?? 3;
-  const horizon = new Date(now.getTime() + leadDays * MS_DAY);
+  const override = options.leadDays;
+  const queryDays = override ?? MAX_LEAD_DAYS;
+  const horizon = new Date(now.getTime() + queryDays * MS_DAY);
 
   const rows = await prisma.reminder.findMany({
     where: {
@@ -148,18 +171,24 @@ export async function dueReminders(options: { now?: Date; leadDays?: number } = 
       user: { suspendedAt: null },
     },
     orderBy: { dueDate: "asc" },
-    take: 500,
+    take: 2000,
     include: { user: { include: { profile: true } } },
   });
 
   return rows
-    // A user with no profile row is on the default, which is reminders on.
-    .filter((row) => row.user.profile?.remindersEnabled !== false)
-    .map((row) => ({
+    .map((row) => {
+      const profile = row.user.profile;
+      // A user with no profile row is on the defaults: reminders on, 3 days ahead.
+      const enabled = profile?.remindersEnabled !== false;
+      const leadDays = override ?? profile?.reminderLeadDays ?? DEFAULT_LEAD_DAYS;
+      return { row, profile, enabled, leadDays };
+    })
+    .filter(({ row, enabled, leadDays }) => enabled && daysUntil(row.dueDate, now) <= leadDays)
+    .map(({ row, profile }) => ({
       id: row.id,
       email: row.user.email,
       mobile: row.user.mobile,
-      userName: row.user.profile?.fullName ?? row.user.email?.split("@")[0] ?? row.user.mobile ?? "there",
+      userName: profile?.fullName ?? row.user.email?.split("@")[0] ?? row.user.mobile ?? "there",
       kind: row.kind,
       title: row.title,
       detail: describeKind(row.kind),
@@ -206,7 +235,7 @@ export function reminderEmail(reminder: DueReminder): { subject: string; text: s
       `It is ${reminder.detail}.`,
       "",
       "Open Fintarg to see how it affects this month's remaining money:",
-      "https://fintarg.app/",
+      `${APP_ORIGIN}/`,
       "",
       "You can change or turn off reminders in Settings at any time.",
     ].join("\n"),
@@ -214,3 +243,21 @@ export function reminderEmail(reminder: DueReminder): { subject: string; text: s
 }
 
 export { formatMoney };
+
+/**
+ * SMS body for an account with no email (FR-1.1). Kept short on purpose - a long
+ * message is truncated by most carriers, and the point is only to prompt a visit.
+ */
+export function reminderSms(reminder: DueReminder): string {
+  const when = daysUntil(reminder.dueDate, new Date());
+  const whenText =
+    when < 0
+      ? `was due ${formatDate(reminder.dueDate)}`
+      : when === 0
+        ? "is due today"
+        : when === 1
+          ? "is due tomorrow"
+          : `is due on ${formatDate(reminder.dueDate)}`;
+
+  return `Fintarg: ${reminder.title} ${whenText}. Open ${APP_ORIGIN}/ to see what it leaves this month.`;
+}

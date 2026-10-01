@@ -5,7 +5,7 @@ import { resendVerificationAction } from "@/app/(auth)/actions";
 import type { FormState } from "@/lib/validation";
 import { Button } from "@/components/ui/Button";
 
-const INITIAL: FormState = { status: "idle", message: "" };
+const INITIAL: FormState = { status: "idle" };
 
 /**
  * Banner action for an unverified address (FR-1.3). A client component is needed
@@ -20,7 +20,7 @@ export function VerifyEmailButton({ csrfToken }: { csrfToken: string }) {
       <Button type="submit" size="sm" variant="secondary" disabled={pending}>
         {pending ? "Sending..." : "Resend the link"}
       </Button>
-      {state.message ? (
+      {state.status !== "idle" ? (
         <p
           role="status"
           className={state.status === "error" ? "text-caption text-danger" : "text-caption text-text-muted"}

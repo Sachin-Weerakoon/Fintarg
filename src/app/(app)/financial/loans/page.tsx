@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmDelete } from "@/components/ui/ConfirmDelete";
 import { AlertBanner } from "@/components/ui/AlertBanner";
+import { ReminderChip } from "@/components/financial/ReminderChip";
 import { RecordForm, type FieldSpec } from "@/components/forms/RecordForm";
 import {
   createLoanAction,
@@ -157,10 +158,15 @@ export default async function LoansPage() {
                         {METHOD_LABELS[row.method] ?? row.method} at {row.interestRatePct}% a year
                         {row.purpose ? ` · ${row.purpose}` : ""}
                       </p>
-                      <p className="mt-1 text-small text-text-muted">
+<p className="mt-1 text-small text-text-muted">
                         Started {formatDate(row.startDate)}
                         {row.dueDate ? ` · finishes ${formatDate(row.dueDate)}` : " · no end date yet"}
                       </p>
+                      {row.dueDate ? (
+                        <div className="mt-2">
+                          <ReminderChip date={row.dueDate} prefix="Finish paying by" />
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 

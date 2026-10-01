@@ -1,4 +1,5 @@
 import PDFKit from "pdfkit";
+import { describeGoalAffordability } from "@/lib/goal-affordability";
 import { formatMoney } from "@/lib/money";
 import { formatMonthLabel } from "@/lib/dates";
 import type { MonthlyAnalysis } from "@/lib/finance/analysis";
@@ -112,6 +113,34 @@ export async function renderAnalysisPdf(input: {
         .font("Helvetica")
         .text(goal.message, left + 8, doc.y + 1, { width: width - 8 });
       doc.moveDown(0.25);
+    }
+
+    // D6: the whole-goals figure, which no single goal row can carry on its own.
+    // Display only - it is not part of BR-1 outflow, so it is labelled as such
+    // rather than being folded into the money-out total above.
+    const leftAfterGoals = describeGoalAffordability({
+      incomeCents: analysis.income.totalCents,
+      goalsRequiredCents: analysis.goals.reduce((total, g) => total + g.requiredThisMonthCents, 0),
+      goalCount: analysis.goals.length,
+    });
+    if (analysis.goals.some((goal) => goal.requiredThisMonthCents > 0)) {
+      row(
+        doc,
+        "Left if every goal were saved this month (not part of the total above)",
+        money(leftAfterGoals.leftAfterGoalsCents),
+        left,
+        right,
+        {
+          bold: true,
+          rule: true,
+          tone: leftAfterGoals.affordable ? "positive" : "danger",
+        },
+      );
+      doc
+        .fillColor("#546680")
+        .fontSize(8.5)
+        .font("Helvetica")
+        .text(leftAfterGoals.detail, left + 8, doc.y + 1, { width: width - 8 });
     }
     doc.moveDown(0.4);
   }

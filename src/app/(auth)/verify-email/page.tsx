@@ -22,7 +22,7 @@ export default async function VerifyEmailPage({
     <div>
       <h1 className="text-h1 font-semibold text-text">Confirm your email address</h1>
       {valid ? (
-        <form action="/verify-email" method="post" className="card mt-4 flex flex-col gap-4 p-card">
+        <form action="/verify-email/confirm" method="post" className="card mt-4 flex flex-col gap-4 p-card">
           <input type="hidden" name="_csrf" value={csrfToken} />
           <input type="hidden" name="token" value={token} />
           <p className="text-small text-text-muted">

@@ -18,7 +18,8 @@ import { loadAnalysis } from "@/lib/finance/load";
 import { currentMonthKey, formatDate, relativeDayLabel } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { can } from "@/lib/plans";
-import { collectUpcoming, type UpcomingItem } from "@/lib/reminders";
+import { loadUpcomingItems } from "@/lib/reminders/load";
+import type { UpcomingItem } from "@/lib/reminders";
 import { NetPositionCard, StatTile } from "@/components/NetPositionCard";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { AlertBanner } from "@/components/ui/AlertBanner";
@@ -52,49 +53,10 @@ export default async function HomePage({
   const month = params.month ?? currentMonthKey();
   const today = new Date();
 
-  const [{ analysis, raw }, reminderRows, agreements] = await Promise.all([
+  const [{ analysis, raw }, upcoming] = await Promise.all([
     loadAnalysis(user.id, month, { today }),
-    prisma.reminder.findMany({
-      where: {
-        userId: user.id,
-        status: "pending",
-        dueDate: { gte: new Date(today.getTime() - 86_400_000) },
-        kind: "medical",
-      },
-      orderBy: { dueDate: "asc" },
-      take: 5,
-    }),
-    can(user.edition, "business.advanced")
-      ? prisma.agreement.findMany({
-          where: { userId: user.id, deletedAt: null, endDate: { not: null } },
-          orderBy: { endDate: "asc" },
-          take: 5,
-        })
-      : Promise.resolve([]),
+    loadUpcomingItems({ userId: user.id, month, today, edition: user.edition }),
   ]);
-
-  const upcoming = collectUpcoming(
-    {
-      financePayments: raw.financePayments,
-      pawnedItems: raw.pawnedItems,
-      loans: raw.loans,
-      goals: raw.goals.map((goal) => ({
-        id: goal.id,
-        name: goal.name,
-        remainingCents: Math.max(0, goal.targetAmountCents - goal.savedCents),
-        endDate: goal.endDate ?? null,
-      })),
-      medicalReminders: reminderRows.map((row) => ({ id: row.id, title: row.title, dueDate: row.dueDate })),
-      agreements: agreements.map((row) => ({
-        id: row.id,
-        title: row.title,
-        otherParty: row.otherParty,
-        endDate: row.endDate,
-        status: row.status,
-      })),
-    },
-    { today, month },
-  );
 
   const firstName = (user.fullName ?? user.displayName).split(" ")[0];
   const isEmpty = raw.incomes.length === 0 && raw.expenses.length === 0;
@@ -210,8 +172,8 @@ export default async function HomePage({
             title="Coming up"
             subtitle="Money dates in the next month"
             action={
-              <Link href="/analysis" className="text-small font-medium text-accent hover:underline">
-                Full analysis
+              <Link href="/reminders" className="text-small font-medium text-accent hover:underline">
+                All reminders
               </Link>
             }
           />

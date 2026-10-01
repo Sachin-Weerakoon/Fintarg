@@ -15,6 +15,29 @@ const CATEGORIES = ["Food", "Transport", "Utilities", "Personal/Enjoyment", "Med
 async function main() {
   const passwordHash = await hashPassword("fintarg123");
 
+  /**
+   * The required administrator account (FR-1.6). Without it `requireAdmin` could
+   * never succeed and the whole admin section would be unreachable.
+   *
+   * `update` sets the role and edition on every run rather than only on create, so
+   * an existing database gains the admin once the seed is re-run. Deliberately has
+   * no finance records: an admin manages *access*, never anyone's money.
+   */
+  await prisma.user.upsert({
+    where: { email: "admin@fintarg.lk" },
+    update: { role: "admin", edition: "business", plan: "business" },
+    create: {
+      email: "admin@fintarg.lk",
+      passwordHash,
+      edition: "business",
+      plan: "business",
+      role: "admin",
+      emailVerifiedAt: new Date(),
+      profile: { create: { fullName: "Fintarg Administrator" } },
+      categories: { create: CATEGORIES.map((name, index) => ({ name, sortOrder: index, isDefault: true })) },
+    },
+  });
+
   const basic = await prisma.user.upsert({
     where: { email: "basic@fintarg.lk" },
     update: {},
@@ -126,6 +149,7 @@ async function main() {
   }).catch(() => undefined);
 
   console.log("Seeded accounts:");
+  console.log("  Admin   -> admin@fintarg.lk / fintarg123");
   console.log("  Basic   -> basic@fintarg.lk / fintarg123");
   console.log("  Business-> business@fintarg.lk / fintarg123");
 }

@@ -1,5 +1,6 @@
 import {
   BarChart3,
+BellRing,
   Briefcase,
   FileText,
   FolderLock,
@@ -103,6 +104,14 @@ export const NAV_ITEMS: NavItem[] = [
     description: "Profile, theme, contacts and plan",
     icon: Settings,
     feature: "core.settings",
+    overflowOnly: true,
+  },
+  {
+    key: "reminders",
+    href: "/reminders",
+    label: "Reminders",
+    description: "Every money date coming up",
+    icon: BellRing,
     overflowOnly: true,
   },
   {

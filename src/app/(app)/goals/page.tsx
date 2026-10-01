@@ -13,6 +13,7 @@ import { ButtonLink } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RecordForm, type FieldSpec } from "@/components/forms/RecordForm";
 import { GoalProgressCard } from "@/components/goals/GoalProgressCard";
+import { GoalAffordabilityLine } from "@/components/goals/GoalAffordabilityLine";
 import { createGoalAction, deleteGoalAction } from "./actions";
 
 export const metadata = { title: "Savings goals - Fintarg" };
@@ -86,6 +87,14 @@ export default async function GoalsPage() {
 
       {goals.length > 0 ? (
         <section aria-labelledby="goals-heading">
+          {/* D6: the figure each card cannot show on its own, because it is a
+              whole-month number rather than a property of one goal. */}
+          <GoalAffordabilityLine
+            incomeCents={analysis.income.totalCents}
+            goalsRequiredCents={sum(analysis.goals.map((g) => g.requiredThisMonthCents))}
+            goalCount={goals.length}
+          />
+
           <h2 id="goals-heading" className="sr-only">
             Your goals
           </h2>
