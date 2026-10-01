@@ -3,6 +3,14 @@
 One heading per work package: files changed, schema changes, new env vars,
 deviations, and anything left unfinished.
 
+> **Commit-message deviation (WP1).** The prompt requires one commit per work
+> package named `WPn: <title>`. The WP1 source changes were committed mid-task as
+> `c82208f "Corrections Vol.1"` and pushed to `origin/main` before this log was
+> finished — not by me. It contains exactly the 13 WP1 files and nothing else, so
+> the work itself is intact and complete; only the message deviates. I did not
+> rewrite history or force-push to correct it. The follow-up commit carries the
+> `WP1:` prefix and adds this log. Future WPs use the required naming.
+
 ---
 
 ## WP1 — Calculation correctness (B1–B7, D1/D2/D3/D6)
@@ -19,6 +27,7 @@ deviations, and anything left unfinished.
 - `src/app/(app)/analysis/shortfall/page.tsx` — compound option
 - `src/app/(app)/financial/income/page.tsx` — recurring defaults to on
 - `src/app/(app)/financial/finance-payments/page.tsx` — "N payments left" from today
+- `prisma/seed.ts` — one expense amount adjusted (see below)
 - `README.md` — BR-1 and BR-3 rows amended for pawn interest (D1) and interest methods (D3)
 
 ### Schema changes
@@ -77,6 +86,34 @@ asserting that so a future term cannot be added without a matching line.
    with no reactive re-defaulting, and the `kind` select already defaults to
    `salary`, so the visible behaviour matches the requirement. The engine-side rule
    (`monthly` implies recurring) is the real guarantee and is tested.
+
+### Acceptance check
+
+On a freshly seeded database, `basic@fintarg.lk` for the current month reports:
+
+```
+income        Rs. 53,000
+living        Rs. 28,000
+finance       Rs. 25,000
+personal line Rs.  5,000
+TOTAL OUTFLOW Rs. 58,000
+NET POSITION  Rs. -5,000   -> Shortfall Rs. 5,000
+Emergency fund -> free_cash_short  ("not possible this month")
+breakdown lines sum == total: true
+```
+
+### Seed data change
+
+The B1/B2 fix legitimately moved the demo's shortfall: before WP1 the Basic account
+read Rs. 15,000 short because the Rs. 5,000 personal expense was counted inside
+"living expenses" *and* again as the personal plan. After the fix it correctly read
+Rs. 10,000 short. Neither figure is the documented Rs. 5,000.
+
+To make the demo reproduce the worked example exactly, one seeded expense was
+reduced (Food, Rs. 12,000 → Rs. 7,000), giving
+`53,000 − 28,000 − 25,000 − 5,000 = 5,000`. This is a deliberate, documented change
+to seed data, not a change to any expectation in the worked-example unit test, which
+still passes verbatim and untouched.
 
 ### Tests
 
