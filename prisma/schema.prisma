@@ -14,7 +14,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
@@ -31,12 +31,12 @@ enum UserMode {
 }
 
 model User {
-  id           String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   /// Nullable so an account can be created with only a mobile number (FR-1.1).
   /// Both identifiers are optional individually, but at least one is required
   /// by `registerSchema`.
   email        String?   @unique
-  mobile       String?   @unique
+  mobile       String?
   passwordHash String
   /// Entitlement tier, NOT the product mode. Kept as a String because
   /// `src/lib/plans.ts` resolves it against the admin-editable PlanFeature
@@ -92,11 +92,10 @@ model User {
   verificationTokens  VerificationToken[]
   subscriptions       Subscription[]
 
-  @@index([email])
 }
 
 model Session {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId       String
   tokenHash    String   @unique
   expiresAt    DateTime
@@ -116,7 +115,7 @@ model Session {
 /// One-time password reset (FR-1.3). Only the SHA-256 hash is stored, so a
 /// database leak cannot be replayed against the reset endpoint.
 model PasswordResetToken {
-  id        String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId    String
   tokenHash String    @unique
   expiresAt DateTime
@@ -131,7 +130,7 @@ model PasswordResetToken {
 
 /// One-time email/mobile verification. Optional: it never blocks sign-in.
 model VerificationToken {
-  id        String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId    String
   tokenHash String    @unique
   purpose   String    @default("email") // "email" | "mobile"
@@ -148,11 +147,12 @@ model VerificationToken {
 /// stays the code default; a row here overrides it for that plan, so a feature
 /// can be switched off without a deploy.
 model PlanFeature {
+  id           String    @id @default(cuid()) @map("_id")
   plan    String
   feature String
   enabled Boolean  @default(true)
 
-  @@id([plan, feature])
+  @@unique([plan, feature])
   @@index([plan])
 }
 
@@ -162,7 +162,7 @@ model PlanFeature {
 /// is only moved to `paid` by a **signature-verified webhook**, never by the browser
 /// returning from checkout. That is the whole reason this table exists.
 model Subscription {
-  id                   String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId               String
   plan                 String // "business"
   provider             String // "stripe" | "payhere" | "log"
@@ -184,7 +184,7 @@ model Subscription {
 }
 
 model Profile {
-  id          String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId      String   @unique
   fullName    String?
   mobile      String?
@@ -208,7 +208,7 @@ model Profile {
 }
 
 model Contact {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId       String
   name         String
   relationship String?
@@ -223,7 +223,7 @@ model Contact {
 }
 
 model Document {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId       String
   category     String // "profile" | "cv" | "nic" | "bank" | "medical" | "other" | "letter" | "agreement"
   label        String
@@ -242,7 +242,7 @@ model Document {
 }
 
 model ExpenseCategory {
-  id         String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId     String? // null = built-in category shared by every account
   name       String
   sortOrder  Int      @default(0)
@@ -257,7 +257,7 @@ model ExpenseCategory {
 }
 
 model Income {
-  id         String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId     String
   sourceName String
   kind       String // "salary" | "business" | "other"
@@ -277,7 +277,7 @@ model Income {
 }
 
 model Expense {
-  id          String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId      String
   date        DateTime
   amountCents Int
@@ -302,7 +302,7 @@ model Expense {
 }
 
 model FinancePayment {
-  id              String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId          String
   lender          String
   description     String
@@ -321,7 +321,7 @@ model FinancePayment {
 }
 
 model Loan {
-  id                   String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId               String
   lender               String
   purpose              String?
@@ -345,7 +345,7 @@ model Loan {
 }
 
 model PawnedItem {
-  id                    String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId                String
   description           String
   amountReceivedCents   Int
@@ -364,7 +364,7 @@ model PawnedItem {
 }
 
 model SavingsGoal {
-  id                String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId            String
   name              String
   targetAmountCents Int
@@ -384,7 +384,7 @@ model SavingsGoal {
 }
 
 model Contribution {
-  id          String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId      String
   goalId      String
   date        DateTime @default(now())
@@ -400,7 +400,7 @@ model Contribution {
 }
 
 model PersonalSpendingPlan {
-  id              String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId          String
   month           String // "YYYY-MM"
   plannedAmountCents Int
@@ -419,7 +419,7 @@ model PersonalSpendingPlan {
 /// with its name, registration number and accent colour intact. The letterhead
 /// columns stay because company-branded letters still need them.
 model Business {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId       String
   name         String
   regNumber    String?
@@ -455,7 +455,7 @@ model Business {
 /// Ownership is transitive: branch -> business -> user. Every read must still
 /// scope through the owning user, never by branchId alone.
 model Branch {
-  id         String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   businessId String
   name       String
   address    String?
@@ -481,7 +481,7 @@ model Branch {
 /// Money taken in by trading. The business-side counterpart of `Income`, kept
 /// separate so personal salary can never be mixed into a profit figure.
 model BusinessSale {
-  id          String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId      String
   businessId  String
   branchId    String?
@@ -508,7 +508,7 @@ model BusinessSale {
 /// a hardware shop and a bakery pay for has no fixed upper bound, so an enum
 /// here would need a migration every time a user invents a new one.
 model BusinessCost {
-  id          String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId      String
   businessId  String
   branchId    String?
@@ -534,7 +534,7 @@ model BusinessCost {
 /// counterpart of `FinancePayment`, and deliberately not the same row: mixing a
 /// shop's rent into personal obligations would corrupt both totals.
 model BusinessPayment {
-  id          String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId      String
   businessId  String
   branchId    String?
@@ -564,7 +564,7 @@ model BusinessPayment {
 /// personal `Loan` so both can be fed to the same interest calculation in
 /// `src/lib/finance/analysis.ts` rather than duplicating the formula.
 model BusinessLoan {
-  id          String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId      String
   businessId  String
   branchId    String?
@@ -602,7 +602,7 @@ model BusinessLoan {
 /// not constrained by it; `upsertBusinessTarget` enforces that case in the
 /// action layer instead.
 model BusinessTarget {
-  id          String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId      String
   businessId  String
   branchId    String?
@@ -633,7 +633,7 @@ model BusinessTarget {
 /// the engine reads these rows directly (see `ownerDraws` in AnalysisInput)
 /// instead of pretending a transfer is revenue.
 model OwnerDraw {
-  id          String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId      String
   businessId  String
   /// Positive integer cents leaving the business.
@@ -655,7 +655,7 @@ model OwnerDraw {
 }
 
 model Letter {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId       String
   businessId   String?
   templateKey  String // "bank" | "offer" | "personal" | "company"
@@ -673,7 +673,7 @@ model Letter {
 }
 
 model Agreement {
-  id          String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId      String
   businessId  String?
   title       String
@@ -696,7 +696,7 @@ model Agreement {
 }
 
 model MedicalRecord {
-  id          String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId      String
   kind        String // "expense" | "appointment" | "medication"
   date        DateTime  @default(now())
@@ -716,7 +716,7 @@ model MedicalRecord {
 }
 
 model Reminder {
-  id         String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId     String
   kind       String // "finance_payment" | "loan" | "pawn_interest" | "goal" | "agreement" | "medical"
   title      String
@@ -739,7 +739,7 @@ model Reminder {
 /// A verified request to close an account. Every record is hard-deleted once
 /// the 30-day window in the Personal Data Protection Act has passed.
 model DeletionRequest {
-  id           String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId       String
   requestedAt  DateTime  @default(now())
   purgeAfter   DateTime
@@ -752,7 +752,7 @@ model DeletionRequest {
 }
 
 model AuditLog {
-  id         String   @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   userId     String?
   action     String
   entityType String?
