@@ -132,7 +132,7 @@ describe("business month analysis", () => {
   it("raises a loss warning when net profit is negative", () => {
     const analysis = buildBusinessMonthAnalysis(
       baseInput({
-        sales: [{ amountCents: rupeesToCents(20_000) }],
+        sales: [sale({ amountCents: rupeesToCents(20_000) })],
         targets: [],
       }),
     );
@@ -145,7 +145,7 @@ describe("business month analysis", () => {
   it("warns when owner draws exceed gross profit", () => {
     const analysis = buildBusinessMonthAnalysis(
       baseInput({
-        sales: [{ amountCents: rupeesToCents(30_000) }],
+        sales: [sale({ amountCents: rupeesToCents(30_000) })],
         ownerDraws: [ownerDraw({ amountCents: rupeesToCents(40_000) })],
         targets: [],
       }),
