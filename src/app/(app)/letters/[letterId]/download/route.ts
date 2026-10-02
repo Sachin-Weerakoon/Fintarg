@@ -22,7 +22,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ let
   const letter = await prisma.letter.findFirst({
     where: { id: letterId, userId: user.id, deletedAt: null },
     include: {
-      company: {
+      business: {
         select: { name: true, address: true, phone: true, email: true, regNumber: true, accentColor: true },
       },
     },
@@ -36,8 +36,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ let
   const signerName = user.fullName ?? user.displayName;
   const recipientName = variables.recipientName?.trim() || letter.title;
   const recipientAddress = variables.recipientAddress?.trim() || undefined;
-  const companyAccent = letter.company?.accentColor ?? "";
-  const accentHex = isValidHex(companyAccent) ? companyAccent : user.themeAccent;
+  const businessAccent = letter.business?.accentColor ?? "";
+  const accentHex = isValidHex(businessAccent) ? businessAccent : user.themeAccent;
 
   const buffer = renderLetterPdf({
     title: letter.title,
@@ -47,13 +47,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ let
     signerName,
     signerEmail: user.email ?? undefined,
     todayLabel: formatDate(new Date()),
-    company: letter.company
+    company: letter.business
       ? {
-          name: letter.company.name,
-          address: letter.company.address ?? undefined,
-          phone: letter.company.phone ?? undefined,
-          email: letter.company.email ?? undefined,
-          regNumber: letter.company.regNumber ?? undefined,
+          name: letter.business.name,
+          address: letter.business.address ?? undefined,
+          phone: letter.business.phone ?? undefined,
+          email: letter.business.email ?? undefined,
+          regNumber: letter.business.regNumber ?? undefined,
         }
       : null,
     accentHex,

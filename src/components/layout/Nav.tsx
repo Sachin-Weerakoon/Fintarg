@@ -8,10 +8,11 @@ import {
   BOTTOM_BAR_KEYS,
   navItemsFor,
   secondaryItems,
-  type NavItem,
+  type ResolvedNavItem,
 } from "@/lib/navigation";
 import { cn } from "@/lib/cn";
 import type { Edition, Feature } from "@/lib/plans";
+import type { Locale } from "@/lib/i18n";
 import { useClickOutside } from "@/components/ui/useClickOutside";
 
 function isActive(pathname: string, href: string, key: string) {
@@ -24,6 +25,7 @@ export function Sidebar({
   edition,
   features,
   role,
+  locale,
   userName,
   planLabel,
   onNavigate,
@@ -31,12 +33,13 @@ export function Sidebar({
   edition: Edition;
   features?: Feature[] | null;
   role?: "user" | "admin";
+  locale?: Locale;
   userName: string;
   planLabel: string;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const items = navItemsFor(edition, { resolvedFeatures: features, role });
+  const items = navItemsFor(edition, { resolvedFeatures: features, role, locale });
 
   return (
     <div className="flex h-full flex-col gap-6 p-4">
@@ -96,7 +99,7 @@ export function Sidebar({
   );
 }
 
-function NavIcon({ item, active }: { item: NavItem; active: boolean }) {
+function NavIcon({ item, active }: { item: ResolvedNavItem; active: boolean }) {
   const Icon = item.icon;
   return (
     <span
@@ -111,14 +114,14 @@ function NavIcon({ item, active }: { item: NavItem; active: boolean }) {
 }
 
 /** Mobile bottom navigation: Home | Analysis | Goals | More (UIX-001). */
-export function MobileNav({ edition, features, role, userName, planLabel }: { edition: Edition; features?: Feature[] | null; role?: "user" | "admin"; userName: string; planLabel: string }) {
+export function MobileNav({ edition, features, role, locale, userName, planLabel }: { edition: Edition; features?: Feature[] | null; role?: "user" | "admin"; locale?: Locale; userName: string; planLabel: string }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
-  const items = navItemsFor(edition, { resolvedFeatures: features, role });
+  const items = navItemsFor(edition, { resolvedFeatures: features, role, locale });
   const barItems = BOTTOM_BAR_KEYS.map((key) => items.find((item) => item.key === key)).filter(
-    (item): item is NavItem => Boolean(item),
+    (item): item is ResolvedNavItem => Boolean(item),
   );
-  const overflow = secondaryItems(edition, { resolvedFeatures: features, role });
+  const overflow = secondaryItems(edition, { resolvedFeatures: features, role, locale });
   const more = items.find((item) => item.key === "letters");
   const moreActive = more ? isActive(pathname, more.href, more.key) : false;
 

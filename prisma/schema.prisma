@@ -4,17 +4,30 @@
 // financial calculation in src/lib/finance is exact integer arithmetic. Never
 // introduce Float for money.
 //
-// SQLite is used for local development; the schema is portable to PostgreSQL
-// (Supabase / Neon / Railway) by changing the datasource and the String-typed
-// enumerations below into native enums.
+// PostgreSQL is the only supported database. The schema previously ran on SQLite
+// and was applied with `prisma db push`, so there is no migration history to
+// preserve: the first entry in prisma/migrations/ is the complete baseline.
+// Production applies it with `prisma migrate deploy` (see DEPLOY.md).
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+/// How a user runs their finances.
+///
+/// This is deliberately NOT the same thing as `plan` (`src/lib/plans.ts`).
+/// Mode decides which financial context a screen talks to; plan decides which
+/// features are unlocked. A salary-mode user on the Business plan is normal,
+/// and so is a business-mode user on the free plan.
+enum UserMode {
+  salary
+  business
+  both
 }
 
 model User {
@@ -25,8 +38,16 @@ model User {
   email        String?   @unique
   mobile       String?   @unique
   passwordHash String
+  /// Entitlement tier, NOT the product mode. Kept as a String because
+  /// `src/lib/plans.ts` resolves it against the admin-editable PlanFeature
+  /// table, whose keys are rows rather than compile-time constants.
   edition      String    @default("basic") // "basic" | "business" (see src/lib/plans.ts)
   plan         String    @default("free") // internal plan key, feature flags derive from this
+  /// Which financial contexts this user works in. Independent of `plan`.
+  /// Legacy accounts were mapped basic -> salary, business -> business
+  /// (scripts/migrate-editions.ts); nobody is mapped to `both` automatically,
+  /// because doing so would imply business records they may not have.
+  mode         UserMode  @default(salary)
   /// "user" | "admin" (FR-1.6). Admins manage accounts, never financial content.
   role         String    @default("user")
   /// PDPA No. 9 of 2022 consent, captured at registration (NFR-7).
@@ -54,7 +75,13 @@ model User {
   savingsGoals   SavingsGoal[]
   contributions  Contribution[]
   spendPlans     PersonalSpendingPlan[]
-  companies      Company[]
+  businesses     Business[]
+  ownerDraws     OwnerDraw[]
+  businessSales    BusinessSale[]
+  businessCosts    BusinessCost[]
+  businessPayments BusinessPayment[]
+  businessLoans    BusinessLoan[]
+  businessTargets  BusinessTarget[]
   letters        Letter[]
   agreements     Agreement[]
   medicalRecords MedicalRecord[]
@@ -63,6 +90,7 @@ model User {
   auditLogs      AuditLog[]
   passwordResetTokens PasswordResetToken[]
   verificationTokens  VerificationToken[]
+  subscriptions       Subscription[]
 
   @@index([email])
 }
@@ -126,6 +154,33 @@ model PlanFeature {
 
   @@id([plan, feature])
   @@index([plan])
+}
+
+/// One subscription attempt against a payment gateway (FR-15 upgrade path).
+///
+/// The gateway, not this app, is the authority on whether money arrived: the plan
+/// is only moved to `paid` by a **signature-verified webhook**, never by the browser
+/// returning from checkout. That is the whole reason this table exists.
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String
+  plan                 String // "business"
+  provider             String // "stripe" | "payhere" | "log"
+  providerSessionId    String?   @unique
+  providerPaymentId    String?
+  /// In LKR cents. Integer, like every other money value in this schema.
+  amountCents          Int
+  status               String    @default("pending") // "pending" | "paid" | "failed" | "cancelled" | "refunded"
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  paidAt               DateTime?
+  /// Set when a charge is later reversed, so the plan can be walked back.
+  cancelledAt          DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status, createdAt])
 }
 
 model Profile {
@@ -357,7 +412,13 @@ model PersonalSpendingPlan {
   @@unique([userId, month])
 }
 
-model Company {
+/// One trading entity owned by a user.
+///
+/// This model is the former `Company` (letterhead for company letters) renamed
+/// and extended rather than replaced, so every existing row migrates across
+/// with its name, registration number and accent colour intact. The letterhead
+/// columns stay because company-branded letters still need them.
+model Business {
   id           String   @id @default(cuid())
   userId       String
   name         String
@@ -367,21 +428,236 @@ model Company {
   email        String?
   accentColor  String?
   logoStoredName String?
+  /// First day of trading. Used to label trends; not used in any calculation.
+  startedOn    DateTime?
   deletedAt    DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branches  Branch[]
+  sales     BusinessSale[]
+  costs     BusinessCost[]
+  payments  BusinessPayment[]
+  loans     BusinessLoan[]
+  targets   BusinessTarget[]
+  ownerDraws OwnerDraw[]
   letters   Letter[]
   agreements Agreement[]
 
   @@index([userId])
+  @@index([userId, deletedAt])
+}
+
+/// A trading location within a business. Sales and costs may be attributed to
+/// a branch, or left null to mean "the whole business".
+///
+/// Ownership is transitive: branch -> business -> user. Every read must still
+/// scope through the owning user, never by branchId alone.
+model Branch {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  address    String?
+  phone      String?
+  /// A closed branch keeps its history but cannot take new records.
+  isActive   Boolean  @default(true)
+  openedOn   DateTime?
+  deletedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sales     BusinessSale[]
+  costs     BusinessCost[]
+  payments  BusinessPayment[]
+  loans     BusinessLoan[]
+  targets   BusinessTarget[]
+
+  @@index([businessId])
+  @@index([businessId, deletedAt])
+}
+
+/// Money taken in by trading. The business-side counterpart of `Income`, kept
+/// separate so personal salary can never be mixed into a profit figure.
+model BusinessSale {
+  id          String   @id @default(cuid())
+  userId      String
+  businessId  String
+  branchId    String?
+  date        DateTime
+  amountCents Int
+  /// "cash" | "card" | "credit" | "transfer" - how the money arrived.
+  channel     String?
+  description String?
+  notes       String?
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch   Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@index([userId, date])
+  @@index([businessId, date])
+  @@index([branchId, date])
+}
+
+/// Running cost of trading. `category` is free text on purpose: the set of costs
+/// a hardware shop and a bakery pay for has no fixed upper bound, so an enum
+/// here would need a migration every time a user invents a new one.
+model BusinessCost {
+  id          String   @id @default(cuid())
+  userId      String
+  businessId  String
+  branchId    String?
+  date        DateTime
+  amountCents Int
+  category    String // "rent" | "wages" | "utilities" | "stock" | "transport" | ...
+  description String?
+  notes       String?
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch   Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@index([userId, date])
+  @@index([businessId, date])
+  @@index([branchId, date])
+}
+
+/// A recurring business obligation - rent, a supplier, a lease. The business
+/// counterpart of `FinancePayment`, and deliberately not the same row: mixing a
+/// shop's rent into personal obligations would corrupt both totals.
+model BusinessPayment {
+  id          String   @id @default(cuid())
+  userId      String
+  businessId  String
+  branchId    String?
+  title       String
+  amountCents Int
+  /// "monthly" | "weekly" | "quarterly" | "yearly" | "once"
+  frequency   String   @default("monthly")
+  dueDayOfMonth Int?
+  startDate   DateTime
+  /// Total instalments, matching `FinancePayment.monthsRemaining` semantics.
+  monthsRemaining Int?
+  active      Boolean  @default(true)
+  notes       String?
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch   Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@index([userId, active])
+  @@index([businessId, startDate])
+}
+
+/// A liability the business owes. Field-for-field the same shape as the
+/// personal `Loan` so both can be fed to the same interest calculation in
+/// `src/lib/finance/analysis.ts` rather than duplicating the formula.
+model BusinessLoan {
+  id          String   @id @default(cuid())
+  userId      String
+  businessId  String
+  branchId    String?
+  title       String
+  principalCents Int
+  remainingBalanceCents Int
+  interestRatePct Float @default(0)
+  /// "flat" | "reducing" | "simple" | "compound"
+  method      String   @default("reducing")
+  startDate   DateTime
+  dueDate     DateTime?
+  manualMonthlyInterestCents Int?
+  /// "shortfall" when the loan was created from a business shortfall.
+  sourceRef   String?
+  notes       String?
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch   Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@index([userId, deletedAt])
+  @@index([businessId, startDate])
+}
+
+/// A revenue or profit goal for a business or one of its branches.
+///
+/// `month` is a "YYYY-MM" key, matching the existing `PersonalSpendingPlan`
+/// convention rather than inventing a second notion of "which month".
+///
+/// The unique constraint covers branch-scoped targets. PostgreSQL treats NULLs
+/// as distinct in a unique index, so business-wide targets (branchId null) are
+/// not constrained by it; `upsertBusinessTarget` enforces that case in the
+/// action layer instead.
+model BusinessTarget {
+  id          String   @id @default(cuid())
+  userId      String
+  businessId  String
+  branchId    String?
+  name        String
+  month       String
+  targetAmountCents Int
+  notes       String?
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch   Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@unique([branchId, month])
+  @@index([userId, month])
+  @@index([businessId, month])
+}
+
+/// Money the owner takes out of a business for personal use.
+///
+/// This is modelled as a TRANSFER, not as an expense plus an income. That is the
+/// whole point of the row: a draw leaves the business and arrives in the
+/// personal pot, so in a combined view it nets to zero and can never be counted
+/// twice as external money. Creating a personal `Income` row and separately
+/// reducing business cash is exactly the mistake this model exists to prevent -
+/// the engine reads these rows directly (see `ownerDraws` in AnalysisInput)
+/// instead of pretending a transfer is revenue.
+model OwnerDraw {
+  id          String   @id @default(cuid())
+  userId      String
+  businessId  String
+  /// Positive integer cents leaving the business.
+  amountCents Int
+  date        DateTime
+  notes       String?
+  /// Cheque or transfer reference the owner kept for their own records.
+  reference   String?
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+  @@index([userId, deletedAt])
+  @@index([businessId, date])
 }
 
 model Letter {
   id           String   @id @default(cuid())
   userId       String
-  companyId    String?
+  businessId   String?
   templateKey  String // "bank" | "offer" | "personal" | "company"
   title        String
   variablesJson String
@@ -390,8 +666,8 @@ model Letter {
   deletedAt    DateTime?
   createdAt    DateTime @default(now())
 
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
 }
@@ -399,7 +675,7 @@ model Letter {
 model Agreement {
   id          String    @id @default(cuid())
   userId      String
-  companyId   String?
+  businessId  String?
   title       String
   otherParty  String
   startDate   DateTime
@@ -412,8 +688,8 @@ model Agreement {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
 
   @@index([userId, status])
   @@index([endDate])

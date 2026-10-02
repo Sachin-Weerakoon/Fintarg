@@ -1,4 +1,4 @@
-import PDFKit from "pdfkit";
+import { beginDocument, documentHead, layout, note, row, sectionTitle, stampFooters, tableHead } from "./parts";
 import { describeGoalAffordability } from "@/lib/goal-affordability";
 import { formatMoney } from "@/lib/money";
 import { formatMonthLabel } from "@/lib/dates";
@@ -19,22 +19,8 @@ export async function renderAnalysisPdf(input: {
   accentHex: string;
 }): Promise<Buffer> {
   const { analysis, userName, todayLabel } = input;
-  // pdfkit is listed in `serverExternalPackages`, so it stays a Node-only
-  // dependency and never reaches the browser bundle.
-  const doc = new PDFKit({ size: "A4", margin: 48, bufferPages: true });
-
-  // pdfkit writes asynchronously, so the buffer can only be assembled once the
-  // document stream has actually finished.
-  const finished = new Promise<Buffer>((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-    doc.on("error", reject);
-  });
-
-  const left = doc.page.margins.left;
-  const right = doc.page.width - doc.page.margins.right;
-  const width = right - left;
+  const { doc, finished } = beginDocument();
+  const { left, right, width } = layout(doc);
 
   const money = (cents: number) => formatMoney(cents);
 
@@ -195,64 +181,8 @@ export async function renderAnalysisPdf(input: {
     }
   }
 
-  const footer = (page: number) => {
-    doc
-      .fontSize(8)
-      .font("Helvetica")
-      .fillColor("#546680")
-      .text(
-        `Fintarg · ${input.edition === "business" ? "Business" : "Basic"} plan · private document · page ${page}`,
-        left,
-        doc.page.height - 42,
-        { width, align: "center" },
-      );
-  };
 
-  const range = doc.bufferedPageRange();
-  for (let i = range.start; i < range.start + range.count; i += 1) {
-    doc.switchToPage(i);
-    footer(i - range.start + 1);
-  }
-
+stampFooters({ doc, left, right, width }, input.edition);
   doc.end();
   return finished;
-}
-
-function sectionTitle(doc: PDFKit.PDFDocument, text: string, left: number, right: number) {
-  doc.moveDown(0.4);
-  doc
-    .fillColor("#0f1b2f")
-    .fontSize(12)
-    .font("Helvetica-Bold")
-    .text(text, left, doc.y);
-  const y = doc.y + 2;
-  doc
-    .moveTo(left, y)
-    .lineTo(right, y)
-    .lineWidth(0.8)
-    .strokeColor("#dde5ef")
-    .stroke();
-  doc.moveDown(0.5);
-}
-
-function row(
-  doc: PDFKit.PDFDocument,
-  label: string,
-  value: string,
-  left: number,
-  right: number,
-  options: { bold?: boolean; rule?: boolean; tone?: "danger" | "positive" } = {},
-) {
-  const y = doc.y;
-  const font = options.bold ? ("Helvetica-Bold" as const) : ("Helvetica" as const);
-  doc.fontSize(options.bold ? 10.5 : 9.5).font(font).fillColor("#0f1b2f");
-  doc.text(label, left, y, { width: right - left - 110 });
-  doc.text(value, left, y, { width: right - left, align: "right" });
-  if (options.tone === "danger") doc.fillColor("#b91c1c");
-  else if (options.tone === "positive") doc.fillColor("#047857");
-  if (options.rule) {
-    const lineY = doc.y + 2;
-    doc.moveTo(left, lineY).lineTo(right, lineY).lineWidth(0.6).strokeColor("#dde5ef").stroke();
-    doc.moveDown(0.35);
-  }
 }

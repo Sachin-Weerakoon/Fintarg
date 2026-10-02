@@ -8,11 +8,13 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { loginAction, registerAction } from "@/app/(auth)/actions";
 import { cn } from "@/lib/cn";
 import type { FormState } from "@/lib/validation";
+import { createTranslator, type Locale } from "@/lib/i18n";
 
 const IDLE: FormState = { status: "idle" };
 
 /** FR-1: register as Basic or Business, with a live "which plan is for me" hint. */
-export function RegisterForm({ csrfToken }: { csrfToken: string }) {
+export function RegisterForm({ csrfToken, locale = "en" }: { csrfToken: string; locale?: Locale }) {
+  const t = createTranslator(locale);
   const [state, formAction] = useActionState(registerAction, IDLE);
   const [edition, setEdition] = useState<"basic" | "business">("basic");
   const errors = state.status === "error" ? state.errors ?? {} : {};
@@ -33,7 +35,7 @@ export function RegisterForm({ csrfToken }: { csrfToken: string }) {
         </p>
       ) : null}
 
-      <FormField id="fullName" label="Full name" required error={errors.fullName}>
+      <FormField id="fullName" label={t("auth.nameLabel")} required error={errors.fullName}>
         <TextInput
           id="fullName"
           name="fullName"
@@ -46,7 +48,7 @@ export function RegisterForm({ csrfToken }: { csrfToken: string }) {
 
       <FormField
         id="identifier"
-        label="Email or mobile number"
+        label={t("auth.identifierLabel")}
         required
         hint="Either one works. A mobile number is used for SMS sign-in."
         error={errors.identifier}
@@ -59,15 +61,15 @@ export function RegisterForm({ csrfToken }: { csrfToken: string }) {
           autoComplete="username"
           required
           error={errors.identifier}
-          placeholder="you@example.com or 0771234567"
+          placeholder={t("auth.identifierPlaceholder")}
         />
       </FormField>
 
       <FormField
-        id="password"
-        label="Password"
+id="password"
+        label={t("auth.passwordLabel")}
         required
-        hint="At least 8 characters, with one letter and one number."
+        hint={t("auth.passwordHint")}
         error={errors.password}
       >
         <TextInput
@@ -81,7 +83,7 @@ export function RegisterForm({ csrfToken }: { csrfToken: string }) {
       </FormField>
 
       <fieldset className="flex flex-col gap-2">
-        <legend className="text-small font-medium text-text">Which plan suits you?</legend>
+        <legend className="text-small font-medium text-text">{t("auth.choosePlan")}</legend>
         <div className="grid gap-2 sm:grid-cols-2">
           <EditionOption
             id="edition-basic"
@@ -99,14 +101,14 @@ export function RegisterForm({ csrfToken }: { csrfToken: string }) {
             onSelect={setEdition}
             icon={<Briefcase aria-hidden className="h-4 w-4" />}
             title="Business"
-            detail="Everything in Basic, plus companies and agreements."
+            detail={t("auth.planBusinessDetail")}
           />
         </div>
       </fieldset>
 
-      <FormField
+<FormField
         id="consent"
-        label="I agree to the privacy notice"
+        label={t("auth.consentLabel")}
         error={errors.consent}
       >
         <div className="flex items-start gap-2">
@@ -119,20 +121,17 @@ export function RegisterForm({ csrfToken }: { csrfToken: string }) {
             aria-describedby="consent-hint"
           />
           <p id="consent-hint" className="text-caption text-text-muted">
-            Fintarg stores your money records, goals and documents to show them back to
-            you. Files are encrypted, and you can export or delete everything at any
-            time. We handle your data under Sri Lanka&apos;s Personal Data Protection
-            Act No. 9 of 2022.
+            {t("auth.consentHint")}
           </p>
         </div>
       </FormField>
 
-      <SubmitButton pendingLabel="Creating your account...">Create account</SubmitButton>
+      <SubmitButton pendingLabel={t("auth.creatingAccount")}>{t("auth.createAccount")}</SubmitButton>
 
       <p className="text-center text-small text-text-muted">
-        Already registered?{" "}
+        {t("auth.haveAccount")} {" "}
         <Link href="/login" className="font-medium text-accent hover:underline">
-          Sign in
+          {t("auth.signIn")}
         </Link>
       </p>
     </form>
@@ -178,7 +177,8 @@ function EditionOption({
   );
 }
 
-export function LoginForm({ csrfToken }: { csrfToken: string }) {
+export function LoginForm({ csrfToken, locale = "en" }: { csrfToken: string; locale?: Locale }) {
+  const t = createTranslator(locale);
   const [state, formAction] = useActionState(loginAction, IDLE);
   const errors = state.status === "error" ? state.errors ?? {} : {};
 
@@ -199,7 +199,7 @@ export function LoginForm({ csrfToken }: { csrfToken: string }) {
 
       <FormField
         id="identifier"
-        label="Email or mobile number"
+        label={t("auth.identifierLabel")}
         required
         error={errors.identifier}
       >
@@ -211,11 +211,11 @@ export function LoginForm({ csrfToken }: { csrfToken: string }) {
           autoComplete="username"
           required
           error={errors.identifier}
-          placeholder="you@example.com or 0771234567"
+          placeholder={t("auth.identifierPlaceholder")}
         />
       </FormField>
 
-      <FormField id="password" label="Password" required error={errors.password}>
+      <FormField id="password" label={t("auth.passwordLabel")} required error={errors.password}>
         <TextInput
           id="password"
           name="password"
@@ -228,16 +228,16 @@ export function LoginForm({ csrfToken }: { csrfToken: string }) {
 
       <div className="flex justify-end">
         <Link href="/forgot-password" className="text-small font-medium text-accent hover:underline">
-          Forgotten your password?
+          {t("auth.forgotPassword")}
         </Link>
       </div>
 
-      <SubmitButton pendingLabel="Signing you in...">Sign in</SubmitButton>
+      <SubmitButton pendingLabel={t("auth.signingIn")}>{t("auth.signIn")}</SubmitButton>
 
       <p className="text-center text-small text-text-muted">
-        New to Fintarg?{" "}
+        {t("auth.newHere")} {" "}
         <Link href="/register" className="font-medium text-accent hover:underline">
-          Create an account
+          {t("auth.createAccount")}
         </Link>
       </p>
     </form>

@@ -27,7 +27,7 @@ function LetterList({
     title: string;
     templateKey: string;
     createdAt: Date;
-    company: { id: string; name: string } | null;
+    business: { id: string; name: string } | null;
   }[];
   csrfToken: string;
   label: string;
@@ -83,17 +83,17 @@ export default async function LettersPage() {
   if (!user) redirect("/login");
   if (!can(user.edition, "core.letters.personal")) redirect("/");
 
-  const business = can(user.edition, "business.letters.company");
+  const hasBusinessPlan = can(user.edition, "business.letters.company");
 
-  const [letters, csrfToken, companies] = await Promise.all([
+  const [letters, csrfToken, businesses] = await Promise.all([
     prisma.letter.findMany({
       where: { userId: user.id, deletedAt: null },
-      include: { company: { select: { id: true, name: true } } },
+      include: { business: { select: { id: true, name: true } } },
       orderBy: { createdAt: "desc" },
     }),
     ensureCsrfToken(),
-    business
-      ? prisma.company.findMany({
+    hasBusinessPlan
+      ? prisma.business.findMany({
           where: { userId: user.id, deletedAt: null },
           orderBy: { name: "asc" },
           select: { id: true, name: true },
@@ -101,11 +101,11 @@ export default async function LettersPage() {
       : Promise.resolve([]),
   ]);
 
-  const companyIds = new Set(companies.map((company) => company.id));
-  const personalLetters = letters.filter((letter) => !letter.companyId);
-  const companyLetters = letters.filter((letter) => letter.companyId !== null);
+  const businessIds = new Set(businesses.map((business) => business.id));
+  const personalLetters = letters.filter((letter) => !letter.businessId);
+  const companyLetters = letters.filter((letter) => letter.businessId !== null);
   // Letters whose company was removed or renamed still belong to the user.
-  const orphaned = companyLetters.filter((letter) => !letter.companyId || !companyIds.has(letter.companyId));
+  const orphaned = companyLetters.filter((letter) => !letter.businessId || !businessIds.has(letter.businessId));
 
   return (
     <div className="flex flex-col gap-5">
@@ -139,17 +139,17 @@ export default async function LettersPage() {
         </section>
       ) : null}
 
-      {business && companyLetters.length > 0 ? (
+      {hasBusinessPlan && companyLetters.length > 0 ? (
         <section aria-label="Company letters">
           <SectionTitle hint="Letters written on a company letterhead.">Company letters</SectionTitle>
           <div className="flex flex-col gap-4">
-            {companies.map((company) => {
-              const group = companyLetters.filter((letter) => letter.companyId === company.id);
+            {businesses.map((business) => {
+              const group = companyLetters.filter((letter) => letter.businessId === business.id);
               if (group.length === 0) return null;
               return (
-                <Card key={company.id}>
+                <Card key={business.id}>
                   <p className="mb-3 flex items-center gap-2 text-small font-medium text-text">
-                    {company.name}
+                    {business.name}
                     <Badge tone="accent">
                       {group.length} {group.length === 1 ? "letter" : "letters"}
                     </Badge>
@@ -157,7 +157,7 @@ export default async function LettersPage() {
                   <LetterList
                     letters={group}
                     csrfToken={csrfToken}
-                    label={`Letters from ${company.name}`}
+                    label={`Letters from ${business.name}`}
                   />
                 </Card>
               );

@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ThemeScript } from "@/components/ThemeScript";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getLocale } from "@/lib/i18n/server";
+import { HTML_LANG } from "@/lib/i18n/config";
 import { DEFAULT_ACCENT, ensureReadableOnWhite, hexToRgb, rgbToHsl, hslToRgb, rgbToHex, readableTextOn } from "@/lib/theme";
 
 export const metadata: Metadata = {
@@ -38,6 +40,7 @@ function softTriplet(hex: string): string {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser().catch(() => null);
+  const locale = await getLocale();
 
   const accent = ensureReadableOnWhite(user?.themeAccent ?? DEFAULT_ACCENT.hex);
   const accentContrast = readableTextOn(accent);
@@ -47,7 +50,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html
-      lang="en"
+      // Real locale, not a hardcoded "en": screen readers use this to pick a
+      // pronunciation, and Sinhala/Tamil need a different one from English.
+      lang={HTML_LANG[locale]}
+      dir="ltr"
       data-theme={mode === "system" ? "system" : mode}
       data-font-scale={fontScale}
       data-density={density}

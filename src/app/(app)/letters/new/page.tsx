@@ -35,12 +35,12 @@ export default async function NewLetterPage({
   const template = letterTemplateByKey(requestedKey) ?? templates[0];
   if (!template) redirect("/letters");
 
-  const business = can(user.edition, "business.letters.company");
-  const needsCompany = Boolean(template.businessOnly) && business;
+  const hasBusinessPlan = can(user.edition, "business.letters.company");
+  const needsCompany = Boolean(template.businessOnly) && hasBusinessPlan;
 
-  const [companies, csrfToken] = await Promise.all([
+  const [businesses, csrfToken] = await Promise.all([
     needsCompany
-      ? prisma.company.findMany({
+      ? prisma.business.findMany({
           where: { userId: user.id, deletedAt: null },
           orderBy: { name: "asc" },
           select: { id: true, name: true, address: true },
@@ -51,7 +51,7 @@ export default async function NewLetterPage({
 
   const signerName = user.fullName ?? user.displayName;
   const today = formatDate(new Date());
-  const selectedCompany = companies[0];
+  const selectedCompany = businesses[0];
 
   // The body starts as the finished letter, so the user edits real wording.
   const defaultVars: Record<string, string> = {};
@@ -105,12 +105,12 @@ export default async function NewLetterPage({
     ...(needsCompany
       ? [
           {
-            name: "companyId",
+            name: "businessId",
             label: "Company",
             type: "select" as const,
             options: [
               { value: "", label: "No company letterhead" },
-              ...companies.map((company) => ({ value: company.id, label: company.name })),
+              ...businesses.map((business) => ({ value: business.id, label: business.name })),
             ],
             span: 2 as const,
           },

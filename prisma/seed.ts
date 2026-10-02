@@ -61,7 +61,7 @@ async function main() {
       plan: "business",
       profile: { create: { fullName: "Shanika Silva", mobile: "0779876543" } },
       categories: { create: CATEGORIES.map((name, index) => ({ name, sortOrder: index, isDefault: true })) },
-      companies: {
+      businesses: {
         create: [
           {
             name: "Silva Trading Company",

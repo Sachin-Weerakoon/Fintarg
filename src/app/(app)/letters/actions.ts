@@ -32,7 +32,7 @@ export async function createLetterAction(
 
   const parsed = letterSchema.safeParse({
     templateKey: text(formData, "templateKey"),
-    companyId: text(formData, "companyId"),
+    businessId: text(formData, "businessId"),
     title: text(formData, "title"),
     recipientName: text(formData, "recipientName"),
     recipientAddress: text(formData, "recipientAddress"),
@@ -67,20 +67,20 @@ export async function createLetterAction(
   }
 
   // A company is only attached when it is the user's own, undeleted company.
-  let companyId: string | null = null;
-  if (data.companyId) {
-    const company = await prisma.company.findFirst({
-      where: { id: data.companyId, userId: user.id, deletedAt: null },
+  let businessId: string | null = null;
+  if (data.businessId) {
+    const business = await prisma.business.findFirst({
+      where: { id: data.businessId, userId: user.id, deletedAt: null },
       select: { id: true },
     });
-    if (!company) {
+    if (!business) {
       return {
         status: "error",
         message: "Please fix the highlighted fields.",
-        errors: { companyId: "Choose one of your companies" },
+        errors: { businessId: "Choose one of your companies" },
       };
     }
-    companyId = company.id;
+    businessId = business.id;
   }
 
   const variables: Record<string, string> = { templateKey: data.templateKey };
@@ -93,7 +93,7 @@ export async function createLetterAction(
   await prisma.letter.create({
     data: {
       userId: user.id,
-      companyId,
+      businessId,
       templateKey: data.templateKey,
       title: data.title,
       variablesJson: JSON.stringify(variables),

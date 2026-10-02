@@ -6,6 +6,7 @@ import { SignOutButton } from "@/components/layout/SignOutButton";
 import { AlertBanner } from "@/components/ui/AlertBanner";
 import { VerifyEmailButton } from "@/components/forms/VerifyEmailButton";
 import { ensureCsrfToken } from "@/lib/auth/csrf";
+import { getLocale } from "@/lib/i18n/server";
 
 /**
  * Authenticated shell: desktop left sidebar, mobile bottom navigation, and a
@@ -20,6 +21,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const label = planLabel(user.edition);
   // Only needed when the banner below actually renders.
   const csrfToken = user.needsVerification ? await ensureCsrfToken() : "";
+  const locale = await getLocale();
 
   return (
     <div className="min-h-dvh lg:flex">
@@ -30,7 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </a>
 
       <aside className="no-scrollbar sticky top-0 hidden h-dvh w-64 shrink-0 overflow-y-auto border-r border-border bg-surface lg:block">
-        <Sidebar edition={user.edition} features={user.features} role={user.role} userName={displayName} planLabel={label} />
+        <Sidebar edition={user.edition} features={user.features} role={user.role} locale={locale} userName={displayName} planLabel={label} />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -67,7 +69,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </main>
       </div>
 
-      <MobileNav edition={user.edition} features={user.features} role={user.role} userName={displayName} planLabel={label} />
+      <MobileNav edition={user.edition} features={user.features} role={user.role} locale={locale} userName={displayName} planLabel={label} />
     </div>
   );
 }

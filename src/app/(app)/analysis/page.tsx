@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowRight, CalendarClock, Download, Target, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowRight, CalendarClock, Download, FileText, Target, TrendingDown, TrendingUp } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth/session";
 import { loadAnalysis } from "@/lib/finance/load";
 import { currentMonthKey, formatMonthLabel } from "@/lib/dates";
 import { formatMoney, sum } from "@/lib/money";
 import { GoalAffordabilityLine } from "@/components/goals/GoalAffordabilityLine";
+import { MoneyTrendChart } from "@/components/charts/MoneyTrendChart";
+import { loadMoneyTrend } from "@/lib/charts/load";
 import { NetPositionCard, StatTile } from "@/components/NetPositionCard";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { AlertBanner } from "@/components/ui/AlertBanner";
@@ -28,9 +30,14 @@ export default async function AnalysisPage({
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const params = await searchParams;
+const params = await searchParams;
   const month = params.month ?? currentMonthKey();
-  const { analysis } = await loadAnalysis(user.id, month, { today: new Date() });
+  // The trend always ends on the month being viewed, so switching months moves the
+  // whole window rather than showing a stale "last 6 months".
+  const [{ analysis }, trend] = await Promise.all([
+    loadAnalysis(user.id, month, { today: new Date() }),
+    loadMoneyTrend(user.id, { months: 6, endMonth: month }),
+  ]);
   const nextMonthLabel = formatMonthLabel(analysis.projection.month);
 
   return (
@@ -44,13 +51,21 @@ export default async function AnalysisPage({
         </div>
         <div className="no-print flex flex-wrap items-center gap-2">
           <MonthSwitcher month={month} basePath="/analysis" />
-          <ButtonLink
+<ButtonLink
             href={`/analysis/export?month=${month}`}
             variant="secondary"
             size="sm"
             icon={<Download aria-hidden className="h-4 w-4" />}
           >
-            Download PDF
+            Analysis PDF
+          </ButtonLink>
+          <ButtonLink
+            href={`/analysis/statement?month=${month}`}
+            variant="secondary"
+            size="sm"
+            icon={<FileText aria-hidden className="h-4 w-4" />}
+          >
+            Statement PDF
           </ButtonLink>
         </div>
       </div>
@@ -256,6 +271,22 @@ export default async function AnalysisPage({
             ))}
             </ul>
           </>
+        )}
+      </Card>
+
+<Card>
+        <CardHeader
+          title="Six months at a glance"
+          subtitle="Money in against money out. Anything below the break-even line is a month you came up short."
+        />
+        {trend.length > 0 ? (
+          <MoneyTrendChart points={trend} />
+        ) : (
+          <EmptyState
+            compact
+            title="Not enough history yet"
+            description="Record income and expenses for a month and it will appear here."
+          />
         )}
       </Card>
 

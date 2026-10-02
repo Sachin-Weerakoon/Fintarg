@@ -1,4 +1,5 @@
-import type { Cents } from "@/lib/money";
+import { type Cents } from "@/lib/money";
+import { formatMoney } from "@/lib/money";
 
 /**
  * Chart geometry, kept pure and separate from the rendering so it can be unit

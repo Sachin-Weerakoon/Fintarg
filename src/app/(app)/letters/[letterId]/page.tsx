@@ -25,7 +25,7 @@ export default async function LetterDetailPage({ params }: { params: Promise<{ l
   const [letter, csrfToken] = await Promise.all([
     prisma.letter.findFirst({
       where: { id: letterId, userId: user.id, deletedAt: null },
-      include: { company: { select: { name: true, regNumber: true } } },
+      include: { business: { select: { name: true, regNumber: true } } },
     }),
     ensureCsrfToken(),
   ]);
@@ -54,7 +54,7 @@ export default async function LetterDetailPage({ params }: { params: Promise<{ l
       <Card>
         <CardHeader
           title="Your letter"
-          subtitle={letter.company ? `On ${letter.company.name} letterhead` : "On your own letterhead"}
+          subtitle={letter.business ? `On ${letter.business.name} letterhead` : "On your own letterhead"}
           action={
             <div className="flex flex-wrap items-center justify-end gap-2">
               <ButtonLink
@@ -78,8 +78,8 @@ export default async function LetterDetailPage({ params }: { params: Promise<{ l
         <div className="flex flex-col gap-3">
           <p className="flex flex-wrap items-center gap-2">
             <Badge tone="accent">{template?.label ?? "Letter"}</Badge>
-            {letter.company?.regNumber ? (
-              <Badge tone="neutral">Reg. No. {letter.company.regNumber}</Badge>
+            {letter.business?.regNumber ? (
+              <Badge tone="neutral">Reg. No. {letter.business.regNumber}</Badge>
             ) : null}
           </p>
 

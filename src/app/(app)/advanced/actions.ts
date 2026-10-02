@@ -8,7 +8,7 @@ import { assertCsrf } from "@/lib/auth/csrf";
 import { can } from "@/lib/plans";
 import { ensureReadableOnWhite } from "@/lib/theme";
 import { parseAmountToCents } from "@/lib/money";
-import { agreementSchema, companySchema, flattenErrors, type FormState } from "@/lib/validation";
+import { agreementSchema, businessSchema, flattenErrors, type FormState } from "@/lib/validation";
 
 /**
  * BR-7: Business-only features are gated here as well as in the navigation.
@@ -21,11 +21,11 @@ async function requireBusinessUser() {
   return user;
 }
 
-export async function createCompanyAction(_state: FormState, formData: FormData): Promise<FormState> {
+export async function createBusinessAction(_state: FormState, formData: FormData): Promise<FormState> {
   await assertCsrf(formData);
   const user = await requireBusinessUser();
 
-  const parsed = companySchema.safeParse({
+  const parsed = businessSchema.safeParse({
     name: formData.get("name"),
     regNumber: formData.get("regNumber") ?? "",
     address: formData.get("address") ?? "",
@@ -38,7 +38,7 @@ export async function createCompanyAction(_state: FormState, formData: FormData)
     return { status: "error", message: "Please fix the highlighted fields.", errors: flattenErrors(parsed.error) };
   }
 
-  await prisma.company.create({
+  await prisma.business.create({
     data: {
       userId: user.id,
       name: parsed.data.name,
@@ -54,15 +54,15 @@ export async function createCompanyAction(_state: FormState, formData: FormData)
   return { status: "success", message: `${parsed.data.name} was added.` };
 }
 
-export async function updateCompanyAction(_state: FormState, formData: FormData): Promise<FormState> {
+export async function updateBusinessAction(_state: FormState, formData: FormData): Promise<FormState> {
   await assertCsrf(formData);
   const user = await requireBusinessUser();
 
   const id = String(formData.get("id") ?? "");
-  const existing = await prisma.company.findFirst({ where: { id, userId: user.id, deletedAt: null } });
+  const existing = await prisma.business.findFirst({ where: { id, userId: user.id, deletedAt: null } });
   if (!existing) return { status: "error", message: "That company could not be found." };
 
-  const parsed = companySchema.safeParse({
+  const parsed = businessSchema.safeParse({
     name: formData.get("name"),
     regNumber: formData.get("regNumber") ?? "",
     address: formData.get("address") ?? "",
@@ -75,7 +75,7 @@ export async function updateCompanyAction(_state: FormState, formData: FormData)
     return { status: "error", message: "Please fix the highlighted fields.", errors: flattenErrors(parsed.error) };
   }
 
-  await prisma.company.update({
+  await prisma.business.update({
     where: { id: existing.id },
     data: {
       name: parsed.data.name,
@@ -91,11 +91,11 @@ export async function updateCompanyAction(_state: FormState, formData: FormData)
   return { status: "success", message: "Company details updated." };
 }
 
-export async function deleteCompanyAction(formData: FormData): Promise<void> {
+export async function deleteBusinessAction(formData: FormData): Promise<void> {
   await assertCsrf(formData);
   const user = await requireBusinessUser();
   const id = String(formData.get("id") ?? "");
-  await prisma.company.updateMany({ where: { id, userId: user.id }, data: { deletedAt: new Date() } });
+  await prisma.business.updateMany({ where: { id, userId: user.id }, data: { deletedAt: new Date() } });
   revalidatePath("/advanced");
 }
 
@@ -106,7 +106,7 @@ export async function createAgreementAction(_state: FormState, formData: FormDat
   const parsed = agreementSchema.safeParse({
     title: formData.get("title"),
     otherParty: formData.get("otherParty"),
-    companyId: formData.get("companyId") ?? "",
+    businessId: formData.get("businessId") ?? "",
     startDate: formData.get("startDate"),
     endDate: formData.get("endDate"),
     value: formData.get("value") ?? "",
@@ -120,10 +120,30 @@ export async function createAgreementAction(_state: FormState, formData: FormDat
 
   const valueCents = parseAmountToCents(parsed.data.value ?? "");
 
+  // The agreement form is not a trust boundary: businessId arrives from the
+  // browser. Resolving it against this account stops an agreement being
+  // attached to another tenant's company, which would then expose that
+  // company's contact details through the agreement list.
+  let businessId: string | null = null;
+  if (parsed.data.businessId) {
+    const owned = await prisma.business.findFirst({
+      where: { id: parsed.data.businessId, userId: user.id, deletedAt: null },
+      select: { id: true },
+    });
+    if (!owned) {
+      return {
+        status: "error",
+        message: "Please fix the highlighted fields.",
+        errors: { businessId: "Choose one of your companies" },
+      };
+    }
+    businessId = owned.id;
+  }
+
   await prisma.agreement.create({
     data: {
       userId: user.id,
-      companyId: parsed.data.companyId || null,
+      businessId,
       title: parsed.data.title,
       otherParty: parsed.data.otherParty,
       startDate: new Date(parsed.data.startDate),

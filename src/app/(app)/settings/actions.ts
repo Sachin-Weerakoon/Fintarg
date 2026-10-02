@@ -16,6 +16,8 @@ import {
 } from "@/lib/validation";
 import { ensureReadableOnWhite } from "@/lib/theme";
 import { isEdition } from "@/lib/plans";
+import { billingEnabled } from "@/lib/billing/provider";
+import { startCheckout } from "@/lib/billing/checkout";
 import { requestAccountDeletion } from "@/lib/deletion";
 import { z } from "zod";
 
@@ -209,19 +211,19 @@ export async function changePasswordAction(_state: FormState, formData: FormData
 /**
  * FR-15 upgrade path, Basic <-> Business.
  *
- * Billing is Phase 3. When `BILLING_ENABLED` is true the action refuses, because
- * flipping the edition without a payment would hand out a paid feature for free.
- * With it unset (the default) the upgrade stays free, as decided in D5.
+ * When billing is live this **redirects to a gateway** rather than granting anything:
+ * the plan is only moved by a signature-verified webhook (see `/api/billing/webhook`),
+ * because a browser returning from checkout proves nothing about whether money
+ * arrived. With billing off (the default) the upgrade stays free, as decided in D5.
+ *
+ * Downgrades are applied immediately, since they give something away rather than
+ * something away being taken.
  */
 export async function upgradeToBusinessAction(_state: FormState, formData: FormData): Promise<FormState> {
   await assertCsrf(formData);
 
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-
-  if (process.env.BILLING_ENABLED === "true") {
-    return { status: "error", message: "Payments are not set up yet." };
-  }
 
   // B8: the form now submits this field, so the action no longer depends on a
   // missing `edition` input to decide what to do.
@@ -233,24 +235,50 @@ export async function upgradeToBusinessAction(_state: FormState, formData: FormD
     return { status: "success", message: "You are already on that plan." };
   }
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { edition: requested, plan: requested },
-  });
-  await prisma.auditLog.create({
-    data: { userId: user.id, action: `plan.${requested}`, entityType: "user" },
+  // A downgrade never needs a payment.
+  if (requested === "basic") {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { edition: "basic", plan: "basic" },
+    });
+    await prisma.auditLog.create({
+      data: { userId: user.id, action: "plan.basic", entityType: "user" },
+    });
+    revalidatePath("/", "layout");
+    revalidatePath("/advanced");
+    revalidatePath("/letters");
+    return { status: "success", message: "You are on the Basic plan now. Business-only sections are hidden." };
+  }
+
+  if (!billingEnabled()) {
+    // Free upgrade path, as before.
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { edition: "business", plan: "business" },
+    });
+    await prisma.auditLog.create({
+      data: { userId: user.id, action: "plan.business", entityType: "user" },
+    });
+    revalidatePath("/", "layout");
+    revalidatePath("/advanced");
+    revalidatePath("/letters");
+    return {
+      status: "success",
+      message: "You are on the Business plan now. The Advanced section is unlocked.",
+    };
+  }
+
+  const checkout = await startCheckout({
+    userId: user.id,
+    plan: "business",
+    returnTo: "/settings",
   });
 
-  revalidatePath("/", "layout");
-  revalidatePath("/advanced");
-  revalidatePath("/letters");
-  return {
-    status: "success",
-    message:
-      requested === "business"
-        ? "You are on the Business plan now. The Advanced section is unlocked."
-        : "You are on the Basic plan now. Business-only sections are hidden.",
-  };
+  if (!checkout.ok) return { status: "error", message: checkout.message };
+
+  // Off-site, so a plain redirect - a server action cannot hand back a redirect the
+  // browser follows while still updating our own records.
+  redirect(checkout.url);
 }
 
 export async function updateReminderPreferencesAction(

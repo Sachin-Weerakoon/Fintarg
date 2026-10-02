@@ -15,6 +15,8 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { ConfirmDelete } from "@/components/ui/ConfirmDelete";
 import { RecordForm, type FieldSpec } from "@/components/forms/RecordForm";
 import { AppearanceForm } from "@/components/forms/AppearanceForm";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { getLocale } from "@/lib/i18n/server";
 import {
   addContactAction,
   changePasswordAction,
@@ -38,6 +40,7 @@ export default async function SettingsPage() {
   ]);
 
   const csrfToken = await ensureCsrfToken();
+  const locale = await getLocale();
   const label = planLabel(user.edition);
 
   const profileFields: FieldSpec[] = [
@@ -148,6 +151,14 @@ export default async function SettingsPage() {
             density: profile?.density ?? "comfortable",
           }}
         />
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Language"
+          subtitle="Choose the language of the menus and labels"
+        />
+        <LanguageSwitcher locale={locale} returnTo="/settings" />
       </Card>
 
       <Card>

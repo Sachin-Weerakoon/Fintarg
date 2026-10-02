@@ -19,10 +19,11 @@ npm run db:seed               # optional: two demo accounts
 npm run dev
 ```
 
-Seeded sign-ins (password `fintarg123` for both):
+Seeded sign-ins (password `fintarg123` for all three):
 
 | Account                | Edition  | What it shows                        |
 | ---------------------- | -------- | ------------------------------------ |
+| `admin@fintarg.lk`     | Business | Admin section: accounts and feature flags. No money records. |
 | `basic@fintarg.lk`     | Basic    | The specification's worked example   |
 | `business@fintarg.lk`  | Business | Companies, agreements, company letters |
 
@@ -31,19 +32,21 @@ Quality gates:
 ```bash
 npm run typecheck   # tsc --noEmit
 npm run lint        # next lint
-npm test            # vitest - analysis engine, theme contrast, money formatting
+npm test            # vitest - 152 tests: analysis, charts, i18n, billing, money, theme
 npm run build       # production build (24 routes, ~103 kB shared JS)
 ```
 
 ### Scheduled jobs
 
 Two route handlers do the recurring work. Both are guarded by
-`Authorization: Bearer $CRON_SECRET` (open in development only, and hard 401 in
-production when the secret is missing).
+`Authorization: Bearer $CRON_SECRET`. The guard **fails closed**: with no
+`CRON_SECRET` set they return 401, because `/api/cron/maintenance` permanently
+deletes accounts and a forgotten variable must not quietly open that. To exercise
+them from a terminal, set `CRON_ALLOW_OPEN=true` and leave `CRON_SECRET` empty.
 
 | Route | What it does |
 | --- | --- |
-| `GET /api/cron/reminders` | Materialises reminder rows for every account from their live finance records, then emails the ones inside the lead window. Idempotent: a stable `dedupeKey` plus a `sentAt` stamp mean a rerun neither duplicates a reminder nor resends an email. |
+| `GET /api/cron/reminders` | Materialises reminder rows for every account from their live finance records, then sends the ones inside that account's own lead window — by email, or by SMS when the account has no email address. Idempotent: a stable `dedupeKey` plus a `sentAt` stamp mean a rerun neither duplicates a reminder nor resends it. |
 | `GET /api/cron/maintenance` | Prunes expired sessions, hard-deletes any account whose 30-day deletion window has closed (unlinking its encrypted vault files first), and clears vault blobs that no longer belong to any document row. |
 
 `vercel.json` wires both to a daily schedule:
@@ -119,22 +122,30 @@ src/
     (auth)/                 login, register, server actions
     (app)/                  authenticated shell: sidebar + bottom nav
       page.tsx              dashboard - the net position card
-      analysis/             full analysis, PDF export, shortfall -> loan
+      analysis/             full analysis, PDF export, statement, shortfall -> loan
       financial/            income, expenses, payments, loans, pawned, personal plan
-      goals/  letters/  medical/  vault/  advanced/  settings/
+      goals/  letters/  medical/  vault/  advanced/  reminders/  settings/  admin/
+    api/
+      cron/                 reminders, maintenance (CRON_SECRET, fail closed)
+      billing/              signature-verified payment webhook
+      locale/               sets the language cookie
   components/
     ui/                     design system primitives (the only styled atoms)
     forms/                  RecordForm + the auth and appearance forms
     layout/                 navigation, page header, month switcher
+    charts/                 hand-written SVG money trend chart
   lib/
     finance/analysis.ts     the engine
     finance/load.ts         database -> engine
+    charts/geometry.ts      pure chart geometry, unit tested
+    i18n/                   locale config + typed en/si/ta catalogues
+    billing/                provider interface, checkout, webhook rules
     plans.ts                editions, plans, feature flags
     theme.ts                contrast checking and accent normalisation
     money.ts  dates.ts      formatting helpers
     auth/                   scrypt hashing, sessions, CSRF, rate limiting
     storage.ts              AES-256-GCM encrypted document vault
-    pdf/analysis.ts         PDF export
+    pdf/                    shared parts, analysis, goals, letters, statement
 prisma/schema.prisma       every entity, all owned by exactly one user
 ```
 
@@ -182,17 +193,46 @@ applied through `data-font-scale` and `data-density`.
 - **Phase 2 (shipped behind flags):** company profiles, company-branded letters,
   the Advanced section with agreements, and category-based access control. The
   nav item and the route both consult `can(edition, "business.advanced")`.
-- **Phase 3 (not built):** Sinhala/Tamil UI, SMS reminders, charts, richer PDF
-  exports, subscription billing.
+- **Phase 3 (shipped):** a six-month money trend chart (hand-written SVG), two more
+  PDF exports (savings goals report, month statement), Sinhala and Tamil for the
+  navigation, authentication and shared money vocabulary, SMS as a reminder
+  channel, and the subscription billing path.
+
+### Phase 3 notes
+
+**Charts.** `MoneyTrendChart` draws money in against money out with signed bars
+from a break-even line, so a shortfall is visibly below zero. No charting library:
+the geometry is ~120 pure functions in `src/lib/charts/geometry.ts`, unit tested. The
+existing `BarList` and `DailySpendStrip` are kept, because a bar list with a value
+and a share on every row is more accessible than a chart, not less.
+
+**Language.** The locale lives in a cookie rather than the URL, so every link,
+bookmark and email keeps working and switching language never changes the page you
+are on. `en` is the source of truth and the Sinhala and Tamil catalogues must match
+its type, so a missing translation is a build error. **Coverage is partial**: the
+navigation, login, registration and shared money vocabulary are translated; the
+long-form finance copy is not. The remainder needs a native reviewer.
+
+**Billing.** `BILLING_PROVIDER` accepts `log` (no gateway) or a provider you
+implement in `src/lib/billing/provider.ts` — three methods, no SDK. Naming a
+provider that is not implemented is an error on purpose, so it cannot silently
+behave like `log` and hand out a paid plan. The plan is moved **only** by the
+signature-verified webhook at `POST /api/billing/webhook`; returning from checkout
+proves nothing. See `.env.example` for the three billing variables.
 
 ## Known gaps
 
 - The email transport is a log stub until `MAIL_PROVIDER` is implemented in
-  `src/lib/mailer.ts`; SMS reminders (Phase 3) have no provider at all.
+  `src/lib/mailer.ts`; SMS is the same shape in `src/lib/auth/sms.ts` and becomes
+  real with `SMS_PROVIDER=http`.
+- **No payment gateway is implemented.** The billing path is complete and tested
+  — including the signature check, replay idempotency and refunds — but
+  `BILLING_PROVIDER=log` means the Business upgrade is still free. Wiring a real
+  gateway is one `BillingProvider` implementation away.
+- The Sinhala and Tamil catalogues cover the app shell only; see above.
 - Storage writes to the local filesystem; swapping in a private S3-compatible
   bucket only requires reimplementing the four functions in `src/lib/storage.ts`.
-- Rate limiting is per process, which is correct for a single instance only.
+- Reminder lead time is honoured per account; a new money date is emailed on the
+  next daily run that falls inside the window.
 - Automated daily backups and the staging environment are deployment concerns,
   not code.
-- Phase 3 remains unbuilt: Sinhala/Tamil UI, charts, richer PDF exports and
-  subscription billing.

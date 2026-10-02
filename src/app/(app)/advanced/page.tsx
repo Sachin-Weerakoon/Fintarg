@@ -18,9 +18,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { RecordForm, type FieldSpec } from "@/components/forms/RecordForm";
 import {
   createAgreementAction,
-  createCompanyAction,
+  createBusinessAction,
   deleteAgreementAction,
-  deleteCompanyAction,
+  deleteBusinessAction,
   updateAgreementStatusAction,
 } from "@/app/(app)/advanced/actions";
 
@@ -57,8 +57,8 @@ export default async function AdvancedPage({
   const query = params.q?.trim() ?? "";
   const status = params.status ?? "";
 
-  const [companies, agreements] = await Promise.all([
-    prisma.company.findMany({ where: { userId: user.id, deletedAt: null }, orderBy: { createdAt: "asc" } }),
+  const [businesses, agreements] = await Promise.all([
+    prisma.business.findMany({ where: { userId: user.id, deletedAt: null }, orderBy: { createdAt: "asc" } }),
     prisma.agreement.findMany({
       where: {
         userId: user.id,
@@ -73,7 +73,7 @@ export default async function AdvancedPage({
   const csrfToken = await ensureCsrfToken();
   const today = new Date();
 
-  const companyFields: FieldSpec[] = [
+  const businessFields: FieldSpec[] = [
     { name: "name", label: "Company name", type: "text", required: true, span: 2 },
     { name: "regNumber", label: "Registration number", type: "text" },
     { name: "accentColor", label: "Letter colour", type: "text", hint: "A colour like #1d4ed8, used on your letters." },
@@ -86,13 +86,13 @@ export default async function AdvancedPage({
     { name: "title", label: "Agreement title", type: "text", required: true, span: 2 },
     { name: "otherParty", label: "Other party", type: "text", required: true },
     {
-      name: "companyId",
+      name: "businessId",
       label: "Company",
       type: "select",
-      defaultValue: companies[0]?.id ?? "",
+      defaultValue: businesses[0]?.id ?? "",
       options: [
         { value: "", label: "Not company related" },
-        ...companies.map((company) => ({ value: company.id, label: company.name })),
+        ...businesses.map((business) => ({ value: business.id, label: business.name })),
       ],
     },
     { name: "startDate", label: "Start date", type: "date", required: true, defaultValue: todayInput() },
@@ -131,33 +131,33 @@ export default async function AdvancedPage({
           action={<Badge tone="accent">Business plan</Badge>}
         />
 
-        {companies.length > 0 ? (
+        {businesses.length > 0 ? (
           <ul className="mb-4 flex flex-col gap-2">
-            {companies.map((company) => (
-              <li key={company.id} className="rounded-input border border-border p-3">
+            {businesses.map((business) => (
+              <li key={business.id} className="rounded-input border border-border p-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="flex items-center gap-2 text-small font-medium text-text">
                       <span
                         aria-hidden
                         className="h-3 w-3 shrink-0 rounded-pill"
-                        style={{ backgroundColor: company.accentColor ?? "rgb(var(--c-accent))" }}
+                        style={{ backgroundColor: business.accentColor ?? "rgb(var(--c-accent))" }}
                       />
-                      {company.name}
+                      {business.name}
                     </p>
-                    {company.regNumber ? (
-                      <p className="text-caption text-text-muted">Reg. {company.regNumber}</p>
+                    {business.regNumber ? (
+                      <p className="text-caption text-text-muted">Reg. {business.regNumber}</p>
                     ) : null}
-                    {company.address ? <p className="mt-1 text-caption text-text-muted">{company.address}</p> : null}
-                    {company.phone || company.email ? (
+                    {business.address ? <p className="mt-1 text-caption text-text-muted">{business.address}</p> : null}
+                    {business.phone || business.email ? (
                       <p className="text-caption text-text-muted">
-                        {[company.phone, company.email].filter(Boolean).join(" · ")}
+                        {[business.phone, business.email].filter(Boolean).join(" · ")}
                       </p>
                     ) : null}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <ButtonLink
-                      href={`/letters/new?template=company&companyId=${company.id}`}
+                      href={`/letters/new?template=company&businessId=${business.id}`}
                       variant="secondary"
                       size="sm"
                       icon={<FileSignature aria-hidden className="h-4 w-4" />}
@@ -165,10 +165,10 @@ export default async function AdvancedPage({
                       Write a letter
                     </ButtonLink>
                     <ConfirmDelete
-                      action={deleteCompanyAction}
-                      hiddenFields={{ id: company.id, _csrf: csrfToken }}
+                      action={deleteBusinessAction}
+                      hiddenFields={{ id: business.id, _csrf: csrfToken }}
                       label="Remove"
-                      title={`Remove ${company.name}?`}
+                      title={`Remove ${business.name}?`}
                       description="Letters you already generated stay in your vault. You can add the company again later."
                       confirmLabel="Yes, remove"
                       variant="secondary"
@@ -190,10 +190,10 @@ export default async function AdvancedPage({
         )}
 
         <RecordForm
-          action={createCompanyAction}
-          fields={companyFields}
+          action={createBusinessAction}
+          fields={businessFields}
           csrfToken={csrfToken}
-          idPrefix="company"
+          idPrefix="business"
           submitLabel="Add company"
           pendingLabel="Adding..."
         />

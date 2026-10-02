@@ -230,7 +230,7 @@ export const personalPlanSchema = z.object({
 
 /* ----------------------------------------------------------------- advanced */
 
-export const companySchema = z.object({
+export const businessSchema = z.object({
   name: z.string().trim().min(2, "Enter the company name").max(80),
   regNumber: optionalText(40),
   address: optionalText(300),
@@ -245,7 +245,7 @@ export const companySchema = z.object({
 export const agreementSchema = z.object({
   title: z.string().trim().min(1, "Enter a title").max(80),
   otherParty: z.string().trim().min(1, "Enter the other party").max(80),
-  companyId: z.string().optional(),
+  businessId: z.string().optional(),
   startDate: dateField,
   endDate: dateField,
   value: z
@@ -259,7 +259,7 @@ export const agreementSchema = z.object({
 
 export const letterSchema = z.object({
   templateKey: z.enum(["bank", "offer", "personal", "company"]),
-  companyId: z.string().optional(),
+  businessId: z.string().optional(),
   title: z.string().trim().min(1, "Give this letter a title").max(80),
   recipientName: z.string().trim().min(1, "Enter a recipient").max(80),
   recipientAddress: optionalText(240),

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Target } from "lucide-react";
+import { Download, Target } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/session";
 import { ensureCsrfToken } from "@/lib/auth/csrf";
@@ -94,6 +94,17 @@ export default async function GoalsPage() {
             goalsRequiredCents={sum(analysis.goals.map((g) => g.requiredThisMonthCents))}
             goalCount={goals.length}
           />
+
+          <div className="mt-3 flex justify-end">
+            <ButtonLink
+              href={`/goals/export?month=${month}`}
+              variant="secondary"
+              size="sm"
+              icon={<Download aria-hidden className="h-4 w-4" />}
+            >
+              Goals report PDF
+            </ButtonLink>
+          </div>
 
           <h2 id="goals-heading" className="sr-only">
             Your goals
