@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, Briefcase, Check, User } from "lucide-react";
+import { AlertCircle, Briefcase, Check, Target, User } from "lucide-react";
 import { FormField, TextInput } from "@/components/ui/FormField";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { loginAction, registerAction } from "@/app/(auth)/actions";
@@ -12,17 +12,17 @@ import { createTranslator, type Locale } from "@/lib/i18n";
 
 const IDLE: FormState = { status: "idle" };
 
-/** FR-1: register as Basic or Business, with a live "which plan is for me" hint. */
+/** FR-1: register with a mode (Salary, Business, Both). */
 export function RegisterForm({ csrfToken, locale = "en" }: { csrfToken: string; locale?: Locale }) {
   const t = createTranslator(locale);
   const [state, formAction] = useActionState(registerAction, IDLE);
-  const [edition, setEdition] = useState<"basic" | "business">("basic");
+  const [mode, setMode] = useState<"salary" | "business" | "both">("salary");
   const errors = state.status === "error" ? state.errors ?? {} : {};
 
   return (
     <form action={formAction} className="card flex flex-col gap-4 p-card" noValidate>
       <input type="hidden" name="_csrf" value={csrfToken} />
-      <input type="hidden" name="edition" value={edition} />
+      <input type="hidden" name="mode" value={mode} />
 
       <div aria-live="polite" className="sr-only">
         {state.status === "error" ? state.message : ""}
@@ -66,7 +66,7 @@ export function RegisterForm({ csrfToken, locale = "en" }: { csrfToken: string; 
       </FormField>
 
       <FormField
-id="password"
+        id="password"
         label={t("auth.passwordLabel")}
         required
         hint={t("auth.passwordHint")}
@@ -83,30 +83,39 @@ id="password"
       </FormField>
 
       <fieldset className="flex flex-col gap-2">
-        <legend className="text-small font-medium text-text">{t("auth.choosePlan")}</legend>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <EditionOption
-            id="edition-basic"
-            value="basic"
-            current={edition}
-            onSelect={setEdition}
+        <legend className="text-small font-medium text-text">{t("auth.chooseMode")}</legend>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <ModeOption
+            id="mode-salary"
+            value="salary"
+            current={mode}
+            onSelect={setMode}
             icon={<User aria-hidden className="h-4 w-4" />}
-            title="Basic"
-            detail="Personal money, goals and documents."
+            title="Salary"
+            detail="Personal income, expenses, bills, loans and goals."
           />
-          <EditionOption
-            id="edition-business"
+          <ModeOption
+            id="mode-business"
             value="business"
-            current={edition}
-            onSelect={setEdition}
+            current={mode}
+            onSelect={setMode}
             icon={<Briefcase aria-hidden className="h-4 w-4" />}
             title="Business"
-            detail={t("auth.planBusinessDetail")}
+            detail="Businesses, branches, sales, costs and targets."
+          />
+          <ModeOption
+            id="mode-both"
+            value="both"
+            current={mode}
+            onSelect={setMode}
+            icon={<Target aria-hidden className="h-4 w-4" />}
+            title="Both"
+            detail="Personal and business finances with owner draws."
           />
         </div>
       </fieldset>
 
-<FormField
+      <FormField
         id="consent"
         label={t("auth.consentLabel")}
         error={errors.consent}
@@ -138,7 +147,7 @@ id="password"
   );
 }
 
-function EditionOption({
+function ModeOption({
   id,
   value,
   current,
@@ -148,9 +157,9 @@ function EditionOption({
   detail,
 }: {
   id: string;
-  value: "basic" | "business";
-  current: "basic" | "business";
-  onSelect: (value: "basic" | "business") => void;
+  value: "salary" | "business" | "both";
+  current: "salary" | "business" | "both";
+  onSelect: (value: "salary" | "business" | "both") => void;
   icon: React.ReactNode;
   title: string;
   detail: string;

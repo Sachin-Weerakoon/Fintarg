@@ -618,7 +618,7 @@ model BusinessTarget {
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   branch   Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
-  @@unique([branchId, month])
+  @@unique([businessId, branchId, month])
   @@index([userId, month])
   @@index([businessId, month])
 }

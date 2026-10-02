@@ -70,7 +70,7 @@ export const registerSchema = z.object({
   fullName: z.string().trim().min(2, "Enter your full name").max(80),
   identifier: identifierField,
   password: passwordField,
-  edition: z.enum(["basic", "business"]),
+  mode: z.enum(["salary", "business", "both"]),
   consent: z.literal("on", {
     errorMap: () => ({ message: "Please accept the privacy notice to continue" }),
   }),

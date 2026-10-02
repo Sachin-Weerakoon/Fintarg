@@ -5,20 +5,17 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 import {
-  BOTTOM_BAR_KEYS,
+  bottomBarKeysFor,
   navItemsFor,
-  secondaryItems,
+  moreSheetItemsFor,
   type ResolvedNavItem,
+  isActive as isActiveNav,
 } from "@/lib/navigation";
 import { cn } from "@/lib/cn";
 import type { Edition, Feature } from "@/lib/plans";
 import type { Locale } from "@/lib/i18n";
 import { useClickOutside } from "@/components/ui/useClickOutside";
-
-function isActive(pathname: string, href: string, key: string) {
-  if (key === "home") return pathname === "/";
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
+import type { UserModeValue } from "@/lib/mode";
 
 /** Desktop left sidebar (UIX-001 navigation). */
 export function Sidebar({
@@ -28,6 +25,7 @@ export function Sidebar({
   locale,
   userName,
   planLabel,
+  mode,
   onNavigate,
 }: {
   edition: Edition;
@@ -36,10 +34,11 @@ export function Sidebar({
   locale?: Locale;
   userName: string;
   planLabel: string;
+  mode?: UserModeValue;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const items = navItemsFor(edition, { resolvedFeatures: features, role, locale });
+  const items = navItemsFor(edition, { resolvedFeatures: features, role, locale, mode });
 
   return (
     <div className="flex h-full flex-col gap-6 p-4">
@@ -59,7 +58,7 @@ export function Sidebar({
       <nav aria-label="Main" className="flex-1 pt-2">
         <ul className="flex flex-col gap-1">
           {items.map((item) => {
-            const active = isActive(pathname, item.href, item.key);
+            const active = isActiveNav(pathname, item);
             const Icon = item.icon;
             return (
               <li key={item.key}>
@@ -108,17 +107,32 @@ function NavIcon({ item, active }: { item: ResolvedNavItem; active: boolean }) {
   );
 }
 
-/** Mobile bottom navigation: Home | Analysis | Goals | More (UIX-001). */
-export function MobileNav({ edition, features, role, locale, userName, planLabel }: { edition: Edition; features?: Feature[] | null; role?: "user" | "admin"; locale?: Locale; userName: string; planLabel: string }) {
+/** Mobile bottom navigation: Home | Financial | Analysis | Goals/Advanced | More (UIX-001). */
+export function MobileNav({
+  edition,
+  features,
+  role,
+  locale,
+  userName,
+  planLabel,
+  mode,
+}: {
+  edition: Edition;
+  features?: Feature[] | null;
+  role?: "user" | "admin";
+  locale?: Locale;
+  userName: string;
+  planLabel: string;
+  mode?: UserModeValue;
+}) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
-  const items = navItemsFor(edition, { resolvedFeatures: features, role, locale });
-  const barItems = BOTTOM_BAR_KEYS.map((key) => items.find((item) => item.key === key)).filter(
+  const items = navItemsFor(edition, { resolvedFeatures: features, role, locale, mode });
+  const bottomKeys = bottomBarKeysFor(mode ?? "salary");
+  const barItems = bottomKeys.map((key) => items.find((item) => item.key === key)).filter(
     (item): item is ResolvedNavItem => Boolean(item),
   );
-  const overflow = secondaryItems(edition, { resolvedFeatures: features, role, locale });
-  const more = items.find((item) => item.key === "letters");
-  const moreActive = more ? isActive(pathname, more.href, more.key) : false;
+  const moreItems = moreSheetItemsFor(edition, { resolvedFeatures: features, role, locale, mode });
 
   const ref = useClickOutside<HTMLDivElement>(() => setMoreOpen(false), moreOpen);
 
@@ -141,8 +155,8 @@ export function MobileNav({ edition, features, role, locale, userName, planLabel
               All sections
             </p>
             <ul className="grid gap-1">
-              {items.map((item) => {
-                const active = isActive(pathname, item.href, item.key);
+              {moreItems.map((item) => {
+                const active = isActiveNav(pathname, item);
                 const Icon = item.icon;
                 return (
                   <li key={item.key}>
@@ -167,15 +181,12 @@ export function MobileNav({ edition, features, role, locale, userName, planLabel
                 );
               })}
             </ul>
-            {overflow.length === 0 ? null : (
-              <p className="sr-only">{overflow.length} more sections available in this menu.</p>
-            )}
           </div>
         ) : null}
 
         <nav aria-label="Main" className="mx-auto flex max-w-lg items-stretch justify-between px-2 py-1">
           {barItems.map((item) => {
-            const active = isActive(pathname, item.href, item.key);
+            const active = isActiveNav(pathname, item);
             return (
               <Link
                 key={item.key}
@@ -186,7 +197,14 @@ export function MobileNav({ edition, features, role, locale, userName, planLabel
                   active ? "text-accent" : "text-text-muted",
                 )}
               >
-                <NavIcon item={item} active={active} />
+                <span
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded-pill",
+                    active ? "bg-accent text-accent-contrast" : "text-text-muted",
+                  )}
+                >
+                  <item.icon aria-hidden className="h-5 w-5" />
+                </span>
                 <span className="font-medium">{item.label}</span>
                 {active ? <span className="sr-only">(current page)</span> : null}
               </Link>
@@ -203,7 +221,9 @@ export function MobileNav({ edition, features, role, locale, userName, planLabel
             <span
               className={cn(
                 "flex h-8 w-8 items-center justify-center rounded-pill",
-                moreActive || moreOpen ? "bg-accent text-accent-contrast" : "text-text-muted",
+                moreItems.some((item) => isActiveNav(pathname, item)) || moreOpen
+                  ? "bg-accent text-accent-contrast"
+                  : "text-text-muted",
               )}
             >
               <MoreHorizontal aria-hidden className="h-5 w-5" />

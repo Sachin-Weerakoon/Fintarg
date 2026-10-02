@@ -50,7 +50,7 @@ export async function registerAction(_state: FormState, formData: FormData): Pro
     fullName: formData.get("fullName"),
     identifier: formData.get("identifier"),
     password: formData.get("password"),
-    edition: formData.get("edition"),
+    mode: formData.get("mode"),
     consent: formData.get("consent"),
   });
 
@@ -62,7 +62,7 @@ export async function registerAction(_state: FormState, formData: FormData): Pro
     };
   }
 
-  const { fullName, password, edition, consent } = parsed.data;
+  const { fullName, password, mode, consent } = parsed.data;
   const identifier = parseIdentifier(parsed.data.identifier);
   if (!identifier) {
     return { status: "error", message: "Please fix the highlighted fields.", errors: { identifier: "Enter a valid email address or mobile number" } };
@@ -88,14 +88,18 @@ export async function registerAction(_state: FormState, formData: FormData): Pro
 
   const passwordHash = await hashPassword(password);
 
+  // Derive edition from mode: salary -> basic, business/both -> basic (user can upgrade later)
+  const edition = "basic";
+
   const user = await prisma.user.create({
     data: {
       // Only store the identifier kind the user actually gave us.
       email: identifier.kind === "email" ? identifier.value : null,
       mobile: identifier.kind === "mobile" ? identifier.value : null,
       passwordHash,
-      edition: isEdition(edition) ? edition : "basic",
-      plan: edition === "business" ? "business" : "basic",
+      edition,
+      plan: "basic",
+      mode,
       lastLoginAt: new Date(),
       consentAt: new Date(),
       consentVersion: CONSENT_VERSION,
@@ -110,7 +114,7 @@ export async function registerAction(_state: FormState, formData: FormData): Pro
       // A verification link is emailed after the transaction commits, so a
       // mail failure cannot roll back a successful registration. Sign-in is
       // never blocked by it.
-      auditLogs: { create: { action: "user.register", entityType: "user", meta: JSON.stringify({ identifier: identifier.kind, consent: CONSENT_VERSION }) } },
+      auditLogs: { create: { action: "user.register", entityType: "user", meta: JSON.stringify({ identifier: identifier.kind, consent: CONSENT_VERSION, mode }) } },
     },
   });
 

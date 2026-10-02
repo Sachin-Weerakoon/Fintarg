@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { generateToken, hashToken } from "@/lib/auth/password";
 import { getPlanFeatures, type Feature } from "@/lib/plans";
 import { displayNameFor } from "@/lib/identity";
+import { type UserModeValue } from "@/lib/mode";
 
 export const SESSION_COOKIE = "fintarg_session";
 export const SESSION_TTL_DAYS = 30;
@@ -17,6 +18,8 @@ export interface SessionUser {
   role: "user" | "admin";
   /** Admin-merged feature list, resolved once per request (FR-15.1). */
   features: Feature[];
+  /** User's financial mode: salary, business or both. */
+  mode: UserModeValue;
   fullName: string | null;
   displayName: string;
   themeAccent: string;
@@ -98,6 +101,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     edition,
     plan: user.plan,
     role: user.role === "admin" ? "admin" : "user",
+    mode: user.mode,
     // Resolved once here so `can()` stays synchronous everywhere else.
     features: await getPlanFeatures(edition === "business" ? "business" : "basic"),
     fullName,
