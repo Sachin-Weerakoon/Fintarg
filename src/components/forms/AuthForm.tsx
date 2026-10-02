@@ -183,7 +183,7 @@ export function LoginForm({ csrfToken, locale = "en" }: { csrfToken: string; loc
   const errors = state.status === "error" ? state.errors ?? {} : {};
 
   return (
-    <form action={formAction} className="card flex flex-col gap-4 p-card" noValidate>
+    <form action={formAction} className="card flex flex-col gap-4 rounded-[22px] border-[#dfe7ed] bg-[#f8fafb] p-6 shadow-[0_2px_10px_rgba(17,34,55,0.04)]" noValidate>
       <input type="hidden" name="_csrf" value={csrfToken} />
 
       <div aria-live="polite" className="sr-only">
@@ -226,15 +226,20 @@ export function LoginForm({ csrfToken, locale = "en" }: { csrfToken: string; loc
         />
       </FormField>
 
-      <div className="flex justify-end">
-        <Link href="/forgot-password" className="text-small font-medium text-accent hover:underline">
+      <div className="mt-1 flex justify-center">
+        <Link href="/forgot-password" className="text-[1.05rem] font-medium text-[#0c8d8a] hover:underline">
           {t("auth.forgotPassword")}
         </Link>
       </div>
 
-      <SubmitButton pendingLabel={t("auth.signingIn")}>{t("auth.signIn")}</SubmitButton>
+      <SubmitButton
+        className="mt-1 h-[58px] rounded-[16px] bg-[#0f8d8e] text-[1.05rem] font-semibold text-white shadow-[0_6px_18px_rgba(15,141,142,0.25)]"
+        pendingLabel={t("auth.signingIn")}
+      >
+        {t("auth.signIn")}
+      </SubmitButton>
 
-      <p className="text-center text-small text-text-muted">
+      <p className="text-center text-[1.05rem] text-[#586a7d]">
         {t("auth.newHere")} {" "}
         <Link href="/register" className="font-medium text-accent hover:underline">
           {t("auth.createAccount")}

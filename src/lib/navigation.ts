@@ -72,20 +72,12 @@ export const NAV_ITEMS: NavItem[] = [
     feature: "core.goals",
   },
   {
-    key: "letters",
-    href: "/letters",
-    labelKey: "nav.letters",
-    descriptionKey: "nav.letters.description",
-    icon: FileText,
-    feature: "core.letters.personal",
-  },
-  {
-    key: "medical",
-    href: "/medical",
-    labelKey: "nav.medical",
-    descriptionKey: "nav.medical.description",
-    icon: HeartPulse,
-    feature: "core.medical",
+    key: "vault",
+    href: "/vault",
+    labelKey: "nav.vault",
+    descriptionKey: "nav.vault.description",
+    icon: FolderLock,
+    feature: "core.vault",
   },
   {
     key: "advanced",
@@ -94,16 +86,6 @@ export const NAV_ITEMS: NavItem[] = [
     descriptionKey: "nav.advanced.description",
     icon: Briefcase,
     feature: "business.advanced",
-    overflowOnly: true,
-  },
-  {
-    key: "vault",
-    href: "/vault",
-    labelKey: "nav.vault",
-    descriptionKey: "nav.vault.description",
-    icon: FolderLock,
-    feature: "core.vault",
-    overflowOnly: true,
   },
   {
     key: "settings",
@@ -112,6 +94,23 @@ export const NAV_ITEMS: NavItem[] = [
     descriptionKey: "nav.settings.description",
     icon: Settings,
     feature: "core.settings",
+  },
+  {
+    key: "letters",
+    href: "/letters",
+    labelKey: "nav.letters",
+    descriptionKey: "nav.letters.description",
+    icon: FileText,
+    feature: "core.letters.personal",
+    overflowOnly: true,
+  },
+  {
+    key: "medical",
+    href: "/medical",
+    labelKey: "nav.medical",
+    descriptionKey: "nav.medical.description",
+    icon: HeartPulse,
+    feature: "core.medical",
     overflowOnly: true,
   },
   {
@@ -150,6 +149,7 @@ export function navItemsFor(
 ): ResolvedNavItem[] {
   const t = createTranslator(options.locale ?? "en");
   return NAV_ITEMS.filter((item) => {
+    if (item.overflowOnly) return false;
     if (item.adminOnly && options.role !== "admin") return false;
     if (!item.feature) return true;
     return featuresOf(edition, options.resolvedFeatures).includes(item.feature);
@@ -171,7 +171,15 @@ export function secondaryItems(
     locale?: Locale;
   } = {},
 ): ResolvedNavItem[] {
-  return navItemsFor(edition, options).filter(
-    (item) => item.overflowOnly && !BOTTOM_BAR_KEYS.includes(item.key as (typeof BOTTOM_BAR_KEYS)[number]),
-  );
+  const t = createTranslator(options.locale ?? "en");
+  return NAV_ITEMS.filter((item) => {
+    if (!item.overflowOnly) return false;
+    if (item.adminOnly && options.role !== "admin") return false;
+    if (!item.feature) return true;
+    return featuresOf(edition, options.resolvedFeatures).includes(item.feature);
+  }).map((item) => ({
+    ...item,
+    label: t(item.labelKey),
+    description: t(item.descriptionKey),
+  }));
 }

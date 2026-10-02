@@ -31,7 +31,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         Skip to main content
       </a>
 
-      <aside className="no-scrollbar sticky top-0 hidden h-dvh w-64 shrink-0 overflow-y-auto border-r border-border bg-surface lg:block">
+      <aside className="no-scrollbar sticky top-0 hidden h-dvh w-64 shrink-0 overflow-y-auto border-r border-border bg-[#1d3951] text-white lg:block">
         <Sidebar edition={user.edition} features={user.features} role={user.role} locale={locale} userName={displayName} planLabel={label} />
       </aside>
 

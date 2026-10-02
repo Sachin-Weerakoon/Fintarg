@@ -43,20 +43,20 @@ export function Sidebar({
 
   return (
     <div className="flex h-full flex-col gap-6 p-4">
-      <Link href="/" className="flex items-center gap-2.5 px-2" onClick={onNavigate}>
+      <Link href="/" className="flex items-center gap-2.5 px-2 text-white" onClick={onNavigate}>
         <span
           aria-hidden
-          className="flex h-9 w-9 items-center justify-center rounded-pill bg-accent text-small font-semibold text-accent-contrast"
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-[#39c4d8] text-small font-semibold text-[#0d2033]"
         >
           F
         </span>
-        <span className="min-w-0">
-          <span className="block truncate text-h2 font-semibold text-text">Fintarg</span>
-          <span className="block truncate text-caption text-text-muted">{userName}</span>
+        <span className="min-w-0 text-left">
+          <span className="block truncate text-h2 font-semibold text-white">Fintarg</span>
+          <span className="block truncate text-caption text-white/70">{planLabel}</span>
         </span>
       </Link>
 
-      <nav aria-label="Main" className="flex-1">
+      <nav aria-label="Main" className="flex-1 pt-2">
         <ul className="flex flex-col gap-1">
           {items.map((item) => {
             const active = isActive(pathname, item.href, item.key);
@@ -68,13 +68,13 @@ export function Sidebar({
                   onClick={onNavigate}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex min-h-touch items-center gap-3 rounded-input px-3 py-2.5 text-body transition-colors",
+                    "flex min-h-touch items-center gap-3 rounded-xl px-3 py-2.5 text-body transition-colors",
                     active
-                      ? "bg-accent-soft font-medium text-accent"
-                      : "text-text hover:bg-muted",
+                      ? "bg-[#e9f1f4] font-medium text-[#132b3d]"
+                      : "text-white/80 hover:bg-white/5",
                   )}
                 >
-                  <Icon aria-hidden className="h-5 w-5 shrink-0" />
+                  <Icon aria-hidden className="h-4 w-4 shrink-0" />
                   <span className="truncate">{item.label}</span>
                   {active ? <span className="sr-only">(current page)</span> : null}
                 </Link>
@@ -84,16 +84,11 @@ export function Sidebar({
         </ul>
       </nav>
 
-      <div className="rounded-card border border-border bg-muted p-3">
-        <p className="text-caption font-medium uppercase tracking-wide text-text-muted">Your plan</p>
-        <p className="mt-0.5 text-body font-medium text-text">{planLabel}</p>
-        <Link
-          href="/settings#plan"
-          className="mt-2 inline-flex min-h-touch items-center text-small font-medium text-accent hover:underline"
-          onClick={onNavigate}
-        >
-          Manage plan
-        </Link>
+      <div className="mt-auto flex items-center gap-2 rounded-full bg-white/10 px-2 py-2 text-white/90 shadow-inner shadow-black/10">
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#39c4d8] text-caption font-semibold text-[#0d2033]">
+          {userName.charAt(0).toUpperCase()}
+        </span>
+        <span className="truncate text-small font-medium">{userName}</span>
       </div>
     </div>
   );

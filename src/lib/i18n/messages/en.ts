@@ -21,7 +21,7 @@ export const en = {
   "nav.letters.description": "Generate and store letters",
   "nav.medical": "Medical",
   "nav.medical.description": "Medical expenses, records and reminders",
-  "nav.advanced": "Advanced",
+  "nav.advanced": "Advanced Features",
   "nav.advanced.description": "Company profiles and agreements",
   "nav.vault": "Documents",
   "nav.vault.description": "Your private document vault",
